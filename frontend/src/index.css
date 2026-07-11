@@ -1,0 +1,522 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --radius: 0.75rem;
+        
+        /* Premium Royal Gujarat Handicraft Colors (RGB Format) */
+        --background: 248 242 232;          /* Ivory Cream: #F8F2E8 */
+        --foreground: 58 31 18;             /* Dark Brown: #3A1F12 */
+        --card: 248 242 232;                /* Ivory Cream: #F8F2E8 */
+        --card-foreground: 58 31 18;
+        --popover: 248 242 232;
+        --popover-foreground: 58 31 18;
+        --primary: 123 15 26;               /* Primary Maroon: #7B0F1A */
+        --primary-foreground: 248 242 232;  /* Ivory Cream */
+        --secondary: 239 228 210;           /* Warm Beige: #EFE4D2 */
+        --secondary-foreground: 123 15 26;
+        --muted: 239 228 210;               /* Warm Beige */
+        --muted-foreground: 123 15 26;
+        --accent: 239 228 210;              /* Warm Beige */
+        --accent-foreground: 123 15 26;
+        --destructive: 163 29 29;           /* Elegant Red: #A31D1D */
+        --destructive-foreground: 248 242 232;
+        --border: 200 155 60;               /* Antique Gold: #C89B3C */
+        --input: 200 155 60;
+        --ring: 212 160 23;                 /* Royal Gold: #D4A017 */
+        
+        /* Charts */
+        --chart-1: 123 15 26;
+        --chart-2: 212 160 23;
+        --chart-3: 200 155 60;
+        --chart-4: 163 29 29;
+        --chart-5: 58 31 18;
+        
+        /* Sidebar (Deep Maroon Theme) */
+        --sidebar: 92 10 18;                /* Deep Royal Maroon: #5C0A12 */
+        --sidebar-foreground: 248 242 232;
+        --sidebar-primary: 212 160 23;      /* Royal Gold */
+        --sidebar-primary-foreground: 92 10 18;
+        --sidebar-accent: 123 15 26;        /* Primary Maroon */
+        --sidebar-accent-foreground: 248 242 232;
+        --sidebar-border: 200 155 60;
+        --sidebar-ring: 212 160 23;
+        
+        /* Traditional Gujarat ERP Custom Theme Tokens */
+        --maroon: 123 15 26;
+        --maroon-deep: 92 10 18;
+        --saffron: 212 160 23;
+        --gold: 212 160 23;
+    }
+
+    .dark {
+        --background: 58 31 18;             /* Dark Brown */
+        --foreground: 248 242 232;          /* Ivory Cream */
+        --card: 92 10 18;                   /* Deep Royal Maroon */
+        --card-foreground: 248 242 232;
+        --popover: 92 10 18;
+        --popover-foreground: 248 242 232;
+        --primary: 212 160 23;              /* Royal Gold */
+        --primary-foreground: 92 10 18;
+        --secondary: 123 15 26;             /* Primary Maroon */
+        --secondary-foreground: 248 242 232;
+        --muted: 123 15 26;
+        --muted-foreground: 200 155 60;
+        --accent: 123 15 26;
+        --accent-foreground: 200 155 60;
+        --destructive: 163 29 29;
+        --destructive-foreground: 248 242 232;
+        --border: 200 155 60;
+        --input: 200 155 60;
+        --ring: 212 160 23;
+        
+        /* Sidebar */
+        --sidebar: 58 31 18;
+        --sidebar-foreground: 248 242 232;
+        --sidebar-primary: 212 160 23;
+        --sidebar-primary-foreground: 58 31 18;
+        --sidebar-accent: 92 10 18;
+        --sidebar-accent-foreground: 248 242 232;
+        --sidebar-border: 200 155 60;
+        --sidebar-ring: 212 160 23;
+        
+        --maroon: 123 15 26;
+        --maroon-deep: 92 10 18;
+        --saffron: 212 160 23;
+        --gold: 212 160 23;
+    }
+
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+        font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+    }
+}
+
+/* Custom utility classes for traditional colors */
+@layer utilities {
+    .text-maroon {
+        color: rgb(var(--maroon));
+    }
+    .bg-maroon {
+        background-color: rgb(var(--maroon));
+    }
+    .border-maroon {
+        border-color: rgb(var(--maroon));
+    }
+    .text-saffron {
+        color: rgb(var(--saffron));
+    }
+    .bg-saffron {
+        background-color: rgb(var(--saffron));
+    }
+    .border-saffron {
+        border-color: rgb(var(--saffron));
+    }
+    .text-gold {
+        color: rgb(var(--gold));
+    }
+    .bg-gold {
+        background-color: rgb(var(--gold));
+    }
+    .border-gold {
+        border-color: rgb(var(--gold));
+    }
+}
+
+/* Print styles */
+@media print {
+    @page {
+        size: A4;
+        margin: 10mm;
+    }
+    
+    body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+    
+    .no-print {
+        display: none !important;
+    }
+    
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+    
+    #invoice-content {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        page-break-inside: avoid;
+    }
+    
+    /* Ensure colors print correctly */
+    .bg-gradient-to-r,
+    .bg-maroon,
+    .bg-saffron,
+    .bg-gold,
+    .text-maroon,
+    .text-saffron,
+    .text-gold,
+    .border-maroon,
+    .border-saffron,
+    .border-gold {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+    
+    /* Optimize table for print */
+    table {
+        page-break-inside: auto;
+    }
+    
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    /* Ensure proper spacing */
+    .space-y-4 > * + *,
+    .space-y-6 > * + * {
+        margin-top: 1rem;
+    }
+}
+
+/* Prevent global text cursor/caret issues */
+input,
+textarea,
+[contenteditable="true"],
+.editable,
+.search-input {
+  cursor: text !important;
+  caret-color: auto !important;
+}
+
+button,
+a,
+nav,
+.navbar,
+.dropdown,
+.card,
+.tab,
+table,
+th,
+td,
+label,
+h1, h2, h3, h4, h5, h6,
+p,
+span,
+div:not(input):not(textarea) {
+  caret-color: transparent !important;
+}
+
+/* Cursor pointer style for clickable elements */
+button,
+a,
+.clickable,
+[role="button"],
+.dropdown-item,
+.tab-item,
+.cursor-pointer,
+.lucide,
+svg {
+  cursor: pointer;
+}
+
+/* Default arrow cursor for non-clickable text components */
+h1, h2, h3, h4, h5, h6, p, span, label, div:not(input):not(textarea):not(button):not(a):not(.clickable):not([role="button"]):not(.cursor-pointer) {
+  cursor: default;
+}
+
+button:disabled,
+button[disabled] {
+  cursor: not-allowed !important;
+}
+
+/* Premium Traditional Gujarat ERP Styles & Overrides */
+
+/* Khadi/Raw Silk Fabric Texture Overlay */
+.khadi-texture {
+  position: relative;
+}
+.khadi-texture::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: rgb(var(--background));
+  background-image: 
+    linear-gradient(90deg, rgba(58, 31, 18, 0.012) 50%, transparent 50%),
+    linear-gradient(rgba(58, 31, 18, 0.012) 50%, transparent 50%);
+  background-size: 3px 3px;
+}
+
+/* Mandala Subtle Grid/Watermark Background Pattern */
+.mandala-watermark {
+  background-image: 
+    radial-gradient(rgba(200, 155, 60, 0.04) 1.5px, transparent 1.5px),
+    radial-gradient(rgba(123, 15, 26, 0.02) 2px, transparent 2px);
+  background-size: 32px 32px, 64px 64px;
+  background-position: 0 0, 16px 16px;
+}
+
+/* Repeating SVG Toran Hanging Leaves Pattern */
+.toran-border {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none' width='100%25' height='20'%3E%3Cpath d='M0,0 L100,0 L100,5 C95,5 90,12 85,15 C80,18 75,10 70,5 C65,5 60,12 55,15 C50,18 45,10 40,5 C35,5 30,12 25,15 C20,18 15,10 10,5 L0,5 Z' fill='%237B0F1A'/%3E%3Ccircle cx='10' cy='11' r='2' fill='%23D4A017'/%3E%3Ccircle cx='25' cy='11' r='2' fill='%23D4A017'/%3E%3Ccircle cx='40' cy='11' r='2' fill='%23D4A017'/%3E%3Ccircle cx='55' cy='11' r='2' fill='%23D4A017'/%3E%3Ccircle cx='70' cy='11' r='2' fill='%23D4A017'/%3E%3Ccircle cx='85' cy='11' r='2' fill='%23D4A017'/%3E%3Cpath d='M10,13 L10,18 M25,13 L25,18 M40,13 L40,18 M55,13 L55,18 M70,13 L70,18 M85,13 L85,18' stroke='%23D4A017' stroke-width='0.5'/%3E%3Ccircle cx='10' cy='18' r='1' fill='%23C89B3C'/%3E%3Ccircle cx='25' cy='18' r='1' fill='%23C89B3C'/%3E%3Ccircle cx='40' cy='18' r='1' fill='%23C89B3C'/%3E%3Ccircle cx='55' cy='18' r='1' fill='%23C89B3C'/%3E%3Ccircle cx='70' cy='18' r='1' fill='%23C89B3C'/%3E%3Ccircle cx='85' cy='18' r='1' fill='%23C89B3C'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 80px 16px;
+  height: 16px;
+  width: 100%;
+}
+
+/* Global Cards Hardening Overrides */
+[data-slot="card"] {
+  background-color: rgb(var(--card)) !important;
+  border-color: rgb(var(--border)) !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 6px 20px -2px rgba(58, 31, 18, 0.08) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative;
+  overflow: hidden;
+}
+[data-slot="card"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23D4A017' stroke-opacity='0.08' stroke-width='1.5'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M8 12h8M12 8v8'/%3E%3C/svg%3E");
+  background-size: contain;
+  pointer-events: none;
+}
+[data-slot="card"]:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 16px 32px -5px rgba(123, 15, 26, 0.12) !important;
+  border-color: rgb(var(--ring)) !important;
+}
+
+/* Global Tables Hardening Overrides */
+[data-slot="table"] {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  border: 1px solid rgb(var(--border)) !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden !important;
+  background-color: #ffffff !important;
+  width: 100% !important;
+}
+[data-slot="table-header"] {
+  background-color: rgb(var(--maroon)) !important;
+  color: rgb(var(--primary-foreground)) !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}
+[data-slot="table-head"] {
+  color: rgb(var(--primary-foreground)) !important;
+  font-weight: 800 !important;
+  border-bottom: 2px solid rgb(var(--border)) !important;
+  padding: 0.75rem 1rem !important;
+  text-transform: uppercase !important;
+  font-size: 0.75rem !important;
+  letter-spacing: 0.05em !important;
+  background-color: rgb(var(--maroon)) !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}
+[data-slot="table-row"] {
+  transition: background-color 0.2s ease !important;
+  border-bottom: 1px solid rgba(200, 155, 60, 0.2) !important;
+}
+[data-slot="table-row"]:nth-child(even) {
+  background-color: rgba(239, 228, 210, 0.2) !important; /* Warm beige zebra stripe */
+}
+[data-slot="table-row"]:hover {
+  background-color: rgba(212, 160, 23, 0.08) !important; /* Soft gold row hover */
+}
+[data-slot="table-cell"] {
+  border-bottom: 1px solid rgba(200, 155, 60, 0.2) !important;
+  padding: 0.75rem 1rem !important;
+  color: rgb(var(--foreground)) !important;
+}
+
+/* Global Buttons Redesign & Gold Hover Glow */
+[data-slot="button"] {
+  border-radius: 0.5rem !important;
+  font-weight: 700 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  letter-spacing: 0.025em !important;
+}
+[data-slot="button"].bg-primary {
+  background-color: rgb(var(--maroon)) !important;
+  color: rgb(var(--primary-foreground)) !important;
+  border: 2px solid rgb(var(--border)) !important;
+}
+[data-slot="button"].bg-primary:hover {
+  box-shadow: 0 0 15px rgba(212, 160, 23, 0.5) !important;
+  background-color: rgb(var(--maroon-deep)) !important;
+  border-color: rgb(var(--ring)) !important;
+  transform: scale(1.02);
+}
+[data-slot="button"].bg-secondary {
+  border: 2px solid rgb(var(--maroon)) !important;
+  background-color: rgb(var(--secondary)) !important;
+  color: rgb(var(--secondary-foreground)) !important;
+}
+[data-slot="button"].bg-secondary:hover {
+  background-color: rgba(123, 15, 26, 0.05) !important;
+  transform: scale(1.02);
+}
+[data-slot="button"].bg-destructive {
+  background-color: rgb(var(--destructive)) !important;
+  color: rgb(var(--destructive-foreground)) !important;
+  border: 1px solid rgba(163, 29, 29, 0.2) !important;
+}
+[data-slot="button"].bg-destructive:hover {
+  box-shadow: 0 0 12px rgba(163, 29, 29, 0.3) !important;
+  transform: scale(1.02);
+}
+
+/* Global Status Badges Re-theming */
+.bg-emerald-100, .bg-green-100, [data-state="completed"] {
+  background-color: rgba(16, 124, 65, 0.1) !important;
+  color: #107c41 !important;
+  border: 1.5px solid rgba(16, 124, 65, 0.4) !important;
+  font-weight: 800 !important;
+}
+.bg-amber-100, .bg-orange-100, [data-state="partial"] {
+  background-color: rgba(212, 160, 23, 0.1) !important;
+  color: #b28000 !important;
+  border: 1.5px solid rgba(212, 160, 23, 0.4) !important;
+  font-weight: 800 !important;
+}
+.bg-red-100, .bg-rose-100, [data-state="rejected"] {
+  background-color: rgba(163, 29, 29, 0.1) !important;
+  color: #a31d1d !important;
+  border: 1.5px solid rgba(163, 29, 29, 0.4) !important;
+  font-weight: 800 !important;
+}
+.bg-blue-100, [data-state="given"] {
+  background-color: rgba(123, 15, 26, 0.08) !important;
+  color: #7B0F1A !important;
+  border: 1.5px solid rgba(123, 15, 26, 0.3) !important;
+  font-weight: 800 !important;
+}
+
+/* Ensure dropdown is visible outside table cells and rows in Product Details section */
+.product-details-container [data-slot="table-container"],
+.product-details-container [data-slot="table"] {
+  overflow: visible !important;
+  position: relative !important;
+}
+
+/* Scrollbars standardisation */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(239, 228, 210, 0.3);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(123, 15, 26, 0.35);
+  border-radius: 3px;
+  transition: background-color 0.25s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(123, 15, 26, 0.75);
+}
+
+/* Accessibility Focus Outline */
+:focus-visible {
+  outline: 2px solid rgb(var(--ring)) !important;
+  outline-offset: 2px !important;
+}
+
+[data-slot="input"]:focus-visible,
+[data-slot="textarea"]:focus-visible,
+[data-slot="select"]:focus-visible,
+select:focus-visible {
+  border-color: rgb(var(--ring)) !important;
+  box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.3) !important;
+  outline: none !important;
+}
+
+/* Reusable ERP States */
+.erp-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+  color: rgb(var(--foreground));
+}
+.erp-spinner {
+  border: 3px solid rgba(212, 160, 23, 0.2);
+  border-top: 3px solid rgb(var(--maroon));
+  border-radius: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  animation: erp-spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+@keyframes erp-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.erp-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+  border: 2px dashed rgba(200, 155, 60, 0.3);
+  border-radius: 0.75rem;
+  background-color: rgba(239, 228, 210, 0.1);
+  color: rgb(var(--foreground));
+}
+.erp-empty-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  color: rgb(var(--border));
+  margin-bottom: 1rem;
+}
+
+.erp-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+  border: 2px solid rgba(163, 29, 29, 0.2);
+  border-radius: 0.75rem;
+  background-color: rgba(163, 29, 29, 0.05);
+  color: rgb(var(--destructive));
+}
+.erp-error-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  color: rgb(var(--destructive));
+  margin-bottom: 1rem;
+}
+
+/* Fix horizontal scrolling in grid tables */
+.table-container-fixed {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

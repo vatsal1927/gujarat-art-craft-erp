@@ -1,0 +1,73 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+build/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Coverage
+coverage/
+
+# DFX / Internet Computer
+.dfx/
+
+# IDE Files
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+.temp/
+tmp/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Backend
+backend/.dfx/
+
+# Local Database
+*.sqlite
+*.db
+
+# Secrets
+*.pem
+*.key
+*.p12
+
+# Antigravity Temporary Files
+build-request.json
+feature_evidence.json
+project_state.json
+spec_vs_diff_report.json
+frontend-file-summaries.txt
+frontend-implementation-plan.json
+coverage.json
+all-files_summary.json
+all_files_summary.json
+gujarat-art-&-craft-invoice-app/
+frontend/build_temp/
+build-template/.icp/
+*.tally_backup
+frontend/env.json
+*.tally_backup
+frontend/src/components/ui/ui/
+frontend/src/lib/lib/
+build-template/src/frontend/env.json
+build-template/
