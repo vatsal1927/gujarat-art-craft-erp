@@ -1310,6 +1310,11 @@ export class MockBackend implements backendInterface {
             throw new Error("Access denied: insufficient department permission.");
         }
 
+        const callerStatus = caller.status ? (typeof caller.status === 'string' ? caller.status : Object.keys(caller.status)[0]) : '';
+        if (callerStatus !== 'Active') {
+            throw new Error("Access denied: caller account is inactive.");
+        }
+
         if ('Staff' in caller.role) {
             this.mockLogAudit(caller.name, "Staff Access Blocked", "Staff tried to reset user password.");
             throw new Error("Access denied: insufficient department permission.");
@@ -1322,6 +1327,11 @@ export class MockBackend implements backendInterface {
         }
 
         const targetUser = users[idx];
+
+        const targetStatus = targetUser.status ? (typeof targetUser.status === 'string' ? targetUser.status : Object.keys(targetUser.status)[0]) : '';
+        if (targetStatus !== 'Active') {
+            throw new Error("Access denied: target account is inactive.");
+        }
 
         if ('Manager' in caller.role) {
             const dept = caller.department ? Object.keys(caller.department)[0] : '';
@@ -1356,7 +1366,12 @@ export class MockBackend implements backendInterface {
         }
         this.saveUsersRaw(users);
         
-        this.logActivity(caller.principalId, caller.name, "Password changed", `Reset password for ${users[idx].username}`);
+        this.logSecurityAudit(
+            caller.principalId,
+            caller.name,
+            "ADMIN_RESET_PASSWORD",
+            `Reset password for ${targetUser.username}`
+        );
     }
 
     async resetPasswordWithVerification(
@@ -1366,9 +1381,6 @@ export class MockBackend implements backendInterface {
         newPasswordHash: string,
         newPrincipalId: string
     ): Promise<{ success: boolean; message: string }> {
-        const users = this.getUsersRaw();
-        const isDevMode = import.meta.env?.DEV === true;
-
         const writeAuditLog = (
             action: string,
             description: string,
@@ -1381,8 +1393,8 @@ export class MockBackend implements backendInterface {
             const newLog = {
                 id: nextId,
                 timestamp: Date.now().toString(),
-                operator: userObj ? userObj.name : 'System',
-                operatorRole: userObj ? this.getRoleText(userObj.role) : 'System',
+                operator: userObj ? userObj.name : 'Anonymous',
+                operatorRole: userObj ? this.getRoleText(userObj.role) : 'Anonymous',
                 module: 'AUTH',
                 action,
                 description,
@@ -1390,143 +1402,22 @@ export class MockBackend implements backendInterface {
                 targetRole: userObj ? this.getRoleText(userObj.role) : '',
                 userId: userObj ? userObj.principalId : '',
                 username: userObj ? userObj.username : '',
-                role: userObj ? this.getRoleText(userObj.role) : 'System',
+                role: userObj ? this.getRoleText(userObj.role) : 'Anonymous',
                 metadata: metadata || {}
             };
             logs.unshift(newLog);
             this.saveAuditLogsRaw(logs);
         };
 
-        if (isDevMode) {
-            console.log('[AuthKeys] user storage key used: mock_users');
-        }
-
-        // 1. Log PASSWORD_RESET_REQUESTED
         writeAuditLog(
-            "PASSWORD_RESET_REQUESTED",
-            `Password reset requested for username: ${normalizeUsername(username)}`,
-            undefined,
-            { username: normalizeUsername(username) }
+            "PASSWORD_RESET_ATTEMPT_NEUTRALIZED",
+            "Anonymous recovery attempt received"
         );
 
-        // 2. Search user using findUserByRecoveryIdentity
-        const targetUser = findUserByRecoveryIdentity(users, username, email, mobile);
-
-        // 3. If no match
-        if (!targetUser) {
-            writeAuditLog(
-                "PASSWORD_RESET_FAILED",
-                `Failed identity verification attempt for username: ${normalizeUsername(username)}`,
-                undefined,
-                { username: normalizeUsername(username), reason: "Entered details do not match any registered user." }
-            );
-            return { 
-                success: false, 
-                message: 'Entered details do not match any registered user.' 
-            };
-        }
-
-        // 4. If match: Log PASSWORD_RESET_IDENTITY_VERIFIED
-        if (isDevMode && targetUser) {
-            console.log('[PasswordReset] user found: ' + targetUser.username);
-            console.log('[PasswordReset] Before principalId exists: ' + targetUser.principalId);
-            console.log('[PasswordReset] PrincipalId changed? false');
-        }
-
-        writeAuditLog(
-            "PASSWORD_RESET_IDENTITY_VERIFIED",
-            `Identity verified successfully for: ${targetUser.username}`,
-            targetUser,
-            { username: targetUser.username, email: targetUser.email, mobile: targetUser.mobile }
-        );
-
-        // Update password hash and principal ID
-        const idx = users.findIndex((u: any) => u.username === targetUser.username);
-        if (idx === -1) {
-            writeAuditLog(
-                "PASSWORD_RESET_FAILED",
-                `User index lookup failed during reset for username: ${targetUser.username}`,
-                targetUser,
-                { username: targetUser.username, reason: "User index lookup failed" }
-            );
-            return { success: false, message: 'User not found' };
-        }
-
-        if (!newPasswordHash) {
-            writeAuditLog(
-                "PASSWORD_RESET_FAILED",
-                `Password hash was empty during reset for username: ${targetUser.username}`,
-                targetUser,
-                { username: targetUser.username, reason: "Password hash was empty" }
-            );
-            return { success: false, message: 'Password hash update failed' };
-        }
-
-        try {
-            users[idx].passwordHash = newPasswordHash;
-            // Preserve user.id, user.principalId, user.role, user.status
-            users[idx].needsPasswordChange = false;
-            users[idx].updatedAt = Date.now().toString(); // Update user updatedAt timestamp
-            this.saveUsersRaw(users);
-
-            if (isDevMode) {
-                console.log('[PasswordReset] hash function used: createPasswordHash');
-                console.log('[PasswordReset] saved to localStorage: mock_users');
-                const verified = users[idx].passwordHash === newPasswordHash;
-                console.log('[PasswordReset] after save hash equals new hash: ' + verified);
-            }
-        } catch (e: any) {
-            writeAuditLog(
-                "PASSWORD_RESET_FAILED",
-                `Storage write failed during reset for username: ${targetUser.username}`,
-                targetUser,
-                { username: targetUser.username, reason: e.message || "Storage write failed" }
-            );
-            return { success: false, message: 'Storage write failed' };
-        }
-
-        // Log PASSWORD_RESET_COMPLETED
-        writeAuditLog(
-            "PASSWORD_RESET_COMPLETED",
-            `Password reset through identity verification completed successfully for user: ${targetUser.name}`,
-            users[idx],
-            { username: targetUser.username }
-        );
-
-        // Invalidate previous sessions/tokens / Clear localStorage & sessionStorage auth keys
-        localStorage.removeItem('user_session');
-        sessionStorage.removeItem('user_session');
-        localStorage.removeItem('mock_current_user');
-        
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (
-                key.startsWith('auth_') || 
-                key.includes('principal') || 
-                key.includes('session') ||
-                key.startsWith('@dfinity/')
-            )) {
-                keysToRemove.push(key);
-            }
-        }
-        for (let i = 0; i < sessionStorage.length; i++) {
-            const key = sessionStorage.key(i);
-            if (key && (
-                key.startsWith('auth_') || 
-                key.includes('principal') || 
-                key.includes('session') ||
-                key.startsWith('@dfinity/')
-            )) {
-                keysToRemove.push(key);
-            }
-        }
-        keysToRemove.forEach(key => {
-            localStorage.removeItem(key);
-            sessionStorage.removeItem(key);
-        });
-
-        return { success: true, message: 'Password reset successful. Please login with your new password.' };
+        return {
+            success: false,
+            message: "If account details are valid, recovery will continue."
+        };
     }
 
     async logUserAction(action: string, details: string): Promise<void> {

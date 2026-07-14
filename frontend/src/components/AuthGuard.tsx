@@ -14,8 +14,7 @@ import { deriveIdentity, bufToHex } from '../utils/credentialDerivation';
 import { getOptionalBoolean } from '../utils/candidHelpers';
 import { MockBackend } from '../mockBackend';
 import { useNavigate, useLocation } from '@tanstack/react-router';
-import { verifyIdentityLocal, normalizeText, normalizeMobile, clearAuthSessions } from '../utils/authService';
-import { normalizeUsername, normalizeEmail, createPasswordHash, findUserByUsername, findUserByRecoveryIdentity, deduplicateUsers } from '../utils/passwordAuth';
+import { normalizeUsername, createPasswordHash, findUserByUsername, deduplicateUsers } from '../utils/passwordAuth';
 
 
 interface AuthContextType {
@@ -1574,388 +1573,33 @@ function ForcePasswordChangeForm({ user, onPasswordChanged, logout }: { user: Us
 }
 
 function PasswordRecoveryForm({ onBack, isMock }: { onBack: () => void; isMock: boolean }) {
-    const [step, setStep] = useState<'verify' | 'reset' | 'success'>('verify');
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-    const [matchedUser, setMatchedUser] = useState<any | null>(null);
-
-    // Step 1: Identity verification fields
-    const [recoveryUsername, setRecoveryUsername] = useState('');
-    const [recoveryEmail, setRecoveryEmail] = useState('');
-    const [recoveryMobile, setRecoveryMobile] = useState('');
-
-    // Step 2: New password fields
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-
-    // Status message from backend
-    const [statusMessage, setStatusMessage] = useState('');
-
     const isDev = import.meta.env?.DEV === true;
-    const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
-    const sessionStr = localStorage.getItem('user_session') || sessionStorage.getItem('user_session');
-    const session = sessionStr ? JSON.parse(sessionStr) : null;
-    const isMasterAdmin = session?.role && 'Admin' in session.role;
     const showDebugPanel = isDev;
 
-
-
-    const handleVerifyIdentity = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (!recoveryUsername || !recoveryEmail || !recoveryMobile) {
-            toast.error('Please fill in all verification fields.');
-            return;
-        }
-
-        const trimmedUsername = normalizeText(recoveryUsername);
-        const trimmedEmail = normalizeText(recoveryEmail);
-        const trimmedMobile = normalizeMobile(recoveryMobile);
-
-        if (import.meta.env?.DEV) {
-            console.log('[PasswordRecovery] Verification started', {
-                username: trimmedUsername,
-                email: trimmedEmail,
-                mobile: trimmedMobile,
-                isMock
-            });
-        }
-
-        setIsSubmitting(true);
-        try {
-            // Check local database if mock backend is enabled or running locally
-            if (isMock) {
-                const verificationResult = verifyIdentityLocal(trimmedUsername, trimmedEmail, trimmedMobile);
-                if (import.meta.env?.DEV) {
-                    console.log('[PasswordRecovery] Verification result:', verificationResult);
-                }
-                if (!verificationResult.success) {
-                    toast.error(verificationResult.message);
-                    return;
-                }
-                setMatchedUser(verificationResult.user);
-            } else {
-                if (import.meta.env?.DEV) {
-                    console.log('[PasswordRecovery] Canister verification (deferred to reset phase)');
-                }
-            }
-
-            toast.success('Identity verified successfully.');
-            setStep('reset');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    const handleResetPassword = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (import.meta.env?.DEV) {
-            console.log('[PasswordReset] Submit started');
-        }
-
-        if (!newPassword) {
-            toast.error('Please enter a new password.');
-            return;
-        }
-
-        const strength = isStrongPassword(newPassword);
-        if (!strength.isValid) {
-            toast.error(strength.message);
-            return;
-        }
-
-        if (newPassword !== confirmPassword) {
-            toast.error('Passwords do not match.');
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            const trimmedUsername = normalizeText(recoveryUsername);
-            const trimmedEmail = normalizeText(recoveryEmail);
-            const trimmedMobile = normalizeMobile(recoveryMobile);
-            const resolveUsername = (matchedUser && matchedUser.username) ? matchedUser.username : trimmedUsername;
-
-            if (import.meta.env?.DEV) {
-                console.log('[PasswordRecovery] Resetting password for username:', resolveUsername);
-            }
-
-            // Derive the new identity and password hash
-            const derivedIdentity = await deriveIdentity(resolveUsername, newPassword);
-            const newPrincipalId = derivedIdentity.getPrincipal().toString();
-
-            const seedHex = await createPasswordHash(resolveUsername, newPassword);
-
-            // Create temporary actor to call resetPasswordWithVerification
-            const { createActorWithConfig } = await import('../config');
-            const tempActor = await createActorWithConfig({
-                agentOptions: {
-                    identity: derivedIdentity
-                }
-            });
-
-            const isMockBackend = tempActor instanceof MockBackend || tempActor.constructor.name === 'MockBackend';
-
-            // Production guard: block mock backend usage in production
-            const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
-            if (isProduction && isMockBackend) {
-                toast.error('Security Violation: Password recovery is not available in production without a secure backend.');
-                setIsSubmitting(false);
-                return;
-            }
-
-            // Dev-only guard: only allow mock reset in development mode
-            if (isMockBackend && !isDev) {
-                toast.error('Password recovery via local database is only available in development mode.');
-                setIsSubmitting(false);
-                return;
-            }
-
-            const result = await tempActor.resetPasswordWithVerification(
-                resolveUsername,
-                trimmedEmail,
-                trimmedMobile,
-                seedHex,
-                newPrincipalId
-            );
-
-            if (result.success) {
-                // Clear all sessions using our helper
-                clearAuthSessions();
-
-                if (import.meta.env?.DEV) {
-                    console.log('[PasswordRecovery] Password reset completed successfully, step transition');
-                }
-
-                toast.success('Password reset successful. Please login with your new password.');
-                onBack();
-            } else {
-                // Display the exact failure reason in dev mode, generic message in production
-                const displayMsg = isDev ? result.message : 'If account details are valid, recovery will continue.';
-                toast.error(displayMsg);
-            }
-        } catch (err: any) {
-            console.error('Password recovery error:', err);
-            const displayErr = isDev ? `Backend update failed: ${err.message || err}` : 'An error occurred during password recovery. Please try again.';
-            toast.error(displayErr);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    if (step === 'success') {
-        return (
-            <div className="w-full space-y-4">
-                <Card className="border-2 border-green-500 shadow-2xl overflow-hidden bg-white/95 dark:bg-gray-950/95 backdrop-blur">
-                    <CardHeader className="bg-gradient-to-r from-green-700 to-green-900 text-white text-center py-6">
-                        <CardTitle className="text-xl">Password Reset Complete</CardTitle>
-                        <CardDescription className="text-white/80 text-xs">
-                            Your password has been updated securely.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-6 space-y-4 text-center">
-                        <div className="mx-auto w-12 h-12 rounded-full bg-green-100 dark:bg-green-800/50 flex items-center justify-center">
-                            <Lock className="h-6 w-6 text-green-600 dark:text-green-400" />
-                        </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {statusMessage || 'Your password has been reset. All existing sessions have been cleared for security.'}
-                        </p>
-                        <Button
-                            onClick={() => {
-                                onBack();
-                                window.location.reload();
-                            }}
-                            className="w-full bg-green-700 hover:bg-green-800 text-white font-semibold flex items-center justify-center space-x-2 py-5 border-2 border-green-500/40 shadow"
-                        >
-                            <LogIn className="h-4 w-4 mr-1" />
-                            <span>Sign In with New Password</span>
-                        </Button>
-                    </CardContent>
-                </Card>
-            </div>
-        );
-    }
-
     return (
-        <div className="w-full space-y-4">
-            <Card className="border-2 border-gold shadow-2xl overflow-hidden bg-white/95 dark:bg-gray-950/95 backdrop-blur">
-                <CardHeader className="bg-gradient-to-r from-maroon via-saffron to-maroon text-white text-center py-6">
-                    <CardTitle className="text-xl">
-                        {step === 'verify' ? 'Identity Verification' : 'Set New Password'}
-                    </CardTitle>
-                    <CardDescription className="text-white/80 text-xs">
-                        {step === 'verify'
-                            ? 'Enter your registered details to verify your identity.'
-                            : 'Choose a strong password to secure your account.'}
-                    </CardDescription>
-                </CardHeader>
+        <div className="space-y-6">
+            <Card className="border-2 border-gold/30 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md shadow-xl">
                 <CardContent className="pt-6 space-y-4">
-                    {step === 'verify' && (
-                        <form onSubmit={handleVerifyIdentity} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label className="text-maroon dark:text-saffron font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                    <UserCircle className="h-3.5 w-3.5" /> Username
-                                </Label>
-                                <Input
-                                    type="text"
-                                    placeholder="e.g. admin"
-                                    value={recoveryUsername}
-                                    onChange={(e) => setRecoveryUsername(e.target.value)}
-                                    className="border-gold/30 focus:ring-saffron"
-                                    required
-                                    disabled={isSubmitting}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-maroon dark:text-saffron font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                    <Mail className="h-3.5 w-3.5" /> Registered Email
-                                </Label>
-                                <Input
-                                    type="email"
-                                    placeholder="e.g. user@example.com"
-                                    value={recoveryEmail}
-                                    onChange={(e) => setRecoveryEmail(e.target.value)}
-                                    className="border-gold/30 focus:ring-saffron"
-                                    required
-                                    disabled={isSubmitting}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-maroon dark:text-saffron font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
-                                    <Phone className="h-3.5 w-3.5" /> Registered Mobile
-                                </Label>
-                                <Input
-                                    type="tel"
-                                    placeholder="e.g. 7383492261"
-                                    value={recoveryMobile}
-                                    onChange={(e) => setRecoveryMobile(e.target.value)}
-                                    className="border-gold/30 focus:ring-saffron"
-                                    required
-                                    disabled={isSubmitting}
-                                    maxLength={10}
-                                />
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-4 py-4 text-center">
+                        <p className="text-sm text-amber-800 dark:text-amber-400 font-medium">
+                            Password recovery requires assistance from an authorized administrator.
+                        </p>
+                    </div>
 
-                                {showDebugPanel && (
-                                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-3 py-2">
-                                    <p className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
-                                        🔧 Development Mode — Emergency local recovery is available.
-                                    </p>
-                                </div>
-                            )}
-                            </div>
-
-                            <Button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full bg-maroon hover:bg-maroon/90 text-white font-semibold flex items-center justify-center space-x-2 py-5 border-2 border-gold/40 hover:border-gold shadow"
-                            >
-                                {isSubmitting ? (
-                                    <>
-                                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                                        <span>Verifying...</span>
-                                    </>
-                                ) : (
-                                    <span>Verify Identity & Continue</span>
-                                )}
-                            </Button>
-
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={onBack}
-                                className="w-full border-gold/30 text-maroon dark:text-saffron hover:bg-gold/10 font-semibold flex items-center justify-center"
-                            >
-                                <ArrowLeft className="h-4 w-4 mr-1" />
-                                <span>Back to Sign In</span>
-                            </Button>
-                        </form>
-                    )}
-
-                    {step === 'reset' && (
-                        <form onSubmit={handleResetPassword} className="space-y-4">
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-lg px-3 py-2">
-                                <p className="text-[11px] text-blue-700 dark:text-blue-400 font-semibold">
-                                    Identity verification passed. Set your new password below.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-maroon dark:text-saffron font-bold text-xs uppercase tracking-wider">
-                                    New Password
-                                </Label>
-                                <div className="relative">
-                                    <Input
-                                        type={showPassword ? 'text' : 'password'}
-                                        placeholder="••••••••"
-                                        value={newPassword}
-                                        onChange={(e) => setNewPassword(e.target.value)}
-                                        className="border-gold/30 focus:ring-saffron pr-10"
-                                        required
-                                        disabled={isSubmitting}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-650"
-                                    >
-                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                                    Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special character.
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="text-maroon dark:text-saffron font-bold text-xs uppercase tracking-wider">
-                                    Confirm Password
-                                </Label>
-                                <Input
-                                    type={showPassword ? 'text' : 'password'}
-                                    placeholder="••••••••"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    className="border-gold/30 focus:ring-saffron"
-                                    required
-                                    disabled={isSubmitting}
-                                />
-                            </div>
-
-                            <Button
-                                type="submit"
-                                disabled={isSubmitting}
-                                className="w-full bg-maroon hover:bg-maroon/90 text-white font-semibold flex items-center justify-center space-x-2 py-5 border-2 border-gold/40 hover:border-gold shadow"
-                            >
-                                {isSubmitting ? (
-                                    <>
-                                        <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-                                        <span>Resetting Password...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <KeyRound className="h-4 w-4 mr-1" />
-                                        <span>Reset Password</span>
-                                    </>
-                                )}
-                            </Button>
-
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setStep('verify')}
-                                className="w-full border-gold/30 text-maroon dark:text-saffron hover:bg-gold/10 font-semibold flex items-center justify-center"
-                            >
-                                <ArrowLeft className="h-4 w-4 mr-1" />
-                                <span>Back to Identity Verification</span>
-                            </Button>
-                        </form>
-                    )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={onBack}
+                        className="w-full border-gold/30 text-maroon dark:text-saffron hover:bg-gold/10 font-semibold flex items-center justify-center py-5"
+                    >
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        <span>Back to Sign In</span>
+                    </Button>
                 </CardContent>
             </Card>
 
             {showDebugPanel && (
-                <Card className="border-2 border-dashed border-amber-500 bg-amber-50/50 dark:bg-amber-955/20 text-slate-800 dark:text-slate-200 shadow-xl">
+                <Card className="border-2 border-dashed border-amber-500 bg-amber-50/50 dark:bg-amber-900/20 text-slate-800 dark:text-slate-200 shadow-xl">
                     <CardHeader className="py-3 px-4 border-b border-dashed border-amber-500/30">
                         <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-400">
                             <ShieldAlert className="h-4 w-4" /> 🔧 Development Debug Panel

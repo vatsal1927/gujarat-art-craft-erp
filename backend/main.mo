@@ -1638,6 +1638,14 @@ actor {
       case (null) { Runtime.trap("Access denied: insufficient permissions."); };
     };
 
+    let isCallerActive = switch (callerUser.status) {
+      case (?s) { s == "Active" };
+      case (null) { false };
+    };
+    if (not isCallerActive) {
+      Runtime.trap("Access denied: caller account is inactive.");
+    };
+
     let isMaster = switch (callerUser.role) { case (#Admin) { true }; case (_) { false } };
     let isManager = switch (callerUser.role) { case (#Manager) { true }; case (_) { false } };
 
@@ -1645,9 +1653,27 @@ actor {
       Runtime.trap("Access denied: insufficient permissions.");
     };
 
+    if (isManager) {
+      let hasPermission = switch (callerUser.permissions) {
+        case (?perms) { perms.canManageStaff };
+        case (null) { false };
+      };
+      if (not hasPermission) {
+        Runtime.trap("Access denied: insufficient permissions to manage staff.");
+      };
+    };
+
     let targetUser = switch (users.get(principalText)) {
       case (?u) { u };
       case (null) { Runtime.trap("User not found"); };
+    };
+
+    let isTargetActive = switch (targetUser.status) {
+      case (?s) { s == "Active" };
+      case (null) { false };
+    };
+    if (not isTargetActive) {
+      Runtime.trap("Access denied: target account is inactive.");
     };
 
     let isTargetMaster = switch (targetUser.role) { case (#Admin) { true }; case (_) { false } };
@@ -1675,7 +1701,7 @@ actor {
     };
     users.add(newPrincipalId, updatedUser);
 
-    logActivity(caller, "Password changed", "Reset password for " # targetUser.username);
+    logSecurityAudit(caller, "ADMIN_RESET_PASSWORD", "Reset password for " # targetUser.username);
   };
 
   func stripSpaces(t : Text) : Text {
@@ -1695,47 +1721,10 @@ actor {
     newPasswordHash : Text,
     newPrincipalId : Text
   ) : async { success : Bool; message : Text } {
-    logActivity(caller, "PASSWORD_RESET_REQUESTED", "Password reset requested for username: " # username);
-    var foundUser : ?User = null;
-    var foundPrincipalText : Text = "";
-    for (u in users.values()) {
-      let uEmail = switch (u.email) { case (?e) { e }; case (null) { "" } };
-      let uMobile = switch (u.mobile) { case (?m) { m }; case (null) { "" } };
-      if (u.username == Text.toLower(trimWhitespace(username)) and
-          Text.toLower(uEmail) == Text.toLower(trimWhitespace(email)) and
-          stripSpaces(uMobile) == stripSpaces(mobile)) {
-        foundUser := ?u;
-        foundPrincipalText := Principal.toText(u.principalId);
-      };
-    };
-
-    switch (foundUser) {
-      case (null) {
-        logActivity(caller, "PASSWORD_RESET_FAILED", "Failed identity verification for: " # username);
-        return { success = false; message = "If account details are valid, recovery will continue." };
-      };
-      case (?usr) {
-        logActivity(caller, "PASSWORD_RESET_IDENTITY_VERIFIED", "Identity verified successfully for: " # username);
-        let isMasterAdmin = switch (usr.role) { case (#Admin) { true }; case (_) { false } };
-        let auditAction = if (isMasterAdmin) { "MASTER_ADMIN_PASSWORD_RESET" } else { "USER_PASSWORD_RESET" };
-
-        // Remove old record
-        users.remove(foundPrincipalText);
-
-        // Add new record under new principal
-        let newPrincipal = Principal.fromText(newPrincipalId);
-        let updatedUser : User = {
-          usr with
-          principalId = newPrincipal;
-          passwordHash = ?newPasswordHash;
-          needsPasswordChange = ?false;
-        };
-        users.add(newPrincipalId, updatedUser);
-
-        logSecurityAudit(newPrincipal, auditAction, "Password reset via recovery flow for user: " # username);
-        logSecurityAudit(newPrincipal, "PASSWORD_RESET_COMPLETED", "User: " # usr.name # ". Username: " # usr.username # ". Principal ID: " # newPrincipalId # ". Recovery Method: Forgot Password Recovery Flow");
-        return { success = true; message = "Password has been reset successfully. Please sign in with your new password." };
-      };
+    logSecurityAudit(caller, "PASSWORD_RESET_ATTEMPT_NEUTRALIZED", "Anonymous recovery attempt received");
+    return {
+      success = false;
+      message = "If account details are valid, recovery will continue.";
     };
   };
 
