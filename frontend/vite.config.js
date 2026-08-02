@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { fileURLToPath, URL } from 'url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -20,6 +21,10 @@ export default defineConfig({
     },
     css: {
         postcss: './postcss.config.js'
+    },
+    test: {
+        globals: true,
+        environment: 'node'
     },
     optimizeDeps: {
         esbuildOptions: {

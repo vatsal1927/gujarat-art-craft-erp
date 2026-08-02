@@ -1,26 +1,18 @@
+import {
+  unwrapOptionalNumber,
+  unwrapOptionalText,
+  unwrapOptionalBoolean,
+} from './candidMappers';
+
 export function getOptionalNumber(
   value: any,
   fallback: any = 0,
   fieldName: string = "value"
 ): number {
-  if (
-    import.meta.env.DEV &&
-    Array.isArray(value)
-  ) {
-    console.warn(
-      "[Candid Optional]",
-      fieldName,
-      value
-    );
+  if (import.meta.env?.DEV && Array.isArray(value)) {
+    console.warn("[Candid Optional]", fieldName, value);
   }
-
-  if (Array.isArray(value)) {
-    return value.length > 0
-      ? Number(value[0]) || 0
-      : Number(fallback) || 0;
-  }
-
-  return Number(value ?? fallback) || 0;
+  return unwrapOptionalNumber(value, fallback);
 }
 
 export function getOptionalText(
@@ -28,24 +20,10 @@ export function getOptionalText(
   fallback = "",
   fieldName: string = "value"
 ): string {
-  if (
-    import.meta.env.DEV &&
-    Array.isArray(value)
-  ) {
-    console.warn(
-      "[Candid Optional]",
-      fieldName,
-      value
-    );
+  if (import.meta.env?.DEV && Array.isArray(value)) {
+    console.warn("[Candid Optional]", fieldName, value);
   }
-
-  if (Array.isArray(value)) {
-    return value.length > 0
-      ? String(value[0])
-      : fallback;
-  }
-
-  return value ?? fallback;
+  return unwrapOptionalText(value, fallback);
 }
 
 export function getOptionalBoolean(
@@ -53,22 +31,8 @@ export function getOptionalBoolean(
   fallback = false,
   fieldName: string = "value"
 ): boolean {
-  if (
-    import.meta.env.DEV &&
-    Array.isArray(value)
-  ) {
-    console.warn(
-      "[Candid Optional]",
-      fieldName,
-      value
-    );
+  if (import.meta.env?.DEV && Array.isArray(value)) {
+    console.warn("[Candid Optional]", fieldName, value);
   }
-
-  if (Array.isArray(value)) {
-    return value.length > 0
-      ? Boolean(value[0])
-      : fallback;
-  }
-
-  return value ?? fallback;
+  return unwrapOptionalBoolean(value, fallback);
 }

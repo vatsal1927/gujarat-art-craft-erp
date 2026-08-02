@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
 import { useActor } from '../hooks/useActor';
 import { useUserSelf } from '../hooks/useQueries';
@@ -54,7 +55,7 @@ const verifyMasterAdminIntegrity = (users: any[]): { isValid: boolean; message: 
     if (master.status !== 'Active' && master.status !== 'Enabled') {
         return { isValid: false, message: `CRITICAL SECURITY BREACH: Master Admin account (${master.name}) is deactivated or disabled!` };
     }
-    if (master.name !== 'Vatsal Dholariya' || master.username !== 'admin') {
+    if (master.username !== 'admin') {
         return { isValid: false, message: "CRITICAL SECURITY BREACH: Master Admin identity mismatch! Unauthorized user holds Master Admin privileges." };
     }
     return { isValid: true, message: "Master Admin integrity is intact." };
@@ -71,6 +72,7 @@ export const useAuth = () => {
 };
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
+    const queryClient = useQueryClient();
     const { identity, login: iiLogin, clear: iiLogout } = useInternetIdentity();
     const { actor, isFetching: isFetchingActor } = useActor();
     const { data: user, isLoading, error, refetch } = useUserSelf();
@@ -282,13 +284,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 
                 cleanUsers.push({
                     principalId: 'iahoq-yel46-zc76y-l56vk-2szze-qc2bx-7szyp-hmubf-q3ydd-5dlax-sae',
-                    name: 'Vatsal Dholariya',
+                    name: 'Master Admin',
                     username: 'admin',
                     role: { Admin: null },
                     createdAt: Date.now().toString(),
                     status: 'Active',
-                    email: 'dholariyavatsal07@gmail.com',
-                    mobile: '7383492261',
+                    email: '',
+                    mobile: '',
                     address: 'Gujarat, India',
                     profilePhoto: '',
                     passwordHash: defaultHash,
@@ -298,9 +300,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             } else {
                 const adminUser = cleanUsers.find((u: any) => u.username === 'admin');
                 if (adminUser) {
-                    adminUser.email = 'dholariyavatsal07@gmail.com';
-                    adminUser.mobile = '7383492261';
-                    adminUser.name = 'Vatsal Dholariya';
                     adminUser.status = 'Active';
                     if (!adminUser.passwordHash) {
                         const encoder = new TextEncoder();
@@ -373,13 +372,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             const matchUser = cleanUsers.find((u: any) => u.username === 'admin');
             log(`Login by username (admin) works: ${matchUser ? '✅ YES' : '❌ NO'}`);
 
-            const matchEmail = cleanUsers.find((u: any) => (u.email || '').toLowerCase() === 'dholariyavatsal07@gmail.com');
-            log(`Login by email (dholariyavatsal07@gmail.com) works: ${matchEmail ? '✅ YES' : '❌ NO'}`);
-
-            const matchMobile = cleanUsers.find((u: any) => (u.mobile || '').replace(/\s+/g, '') === '7383492261');
-            log(`Login by mobile (7383492261) works: ${matchMobile ? '✅ YES' : '❌ NO'}`);
-
-            if (isAdminFound && isStaffFound && matchUser && matchEmail && matchMobile) {
+            if (isAdminFound && isStaffFound && matchUser) {
                 setRepairResults({
                     overall: 'pass',
                     details: [...detailsLog, "--- REPAIR REPORT: PASS ---"]
@@ -421,10 +414,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             const usernameNormalized = (u.username || '').trim().toLowerCase();
 
             if (usernameNormalized === 'admin') {
-                if (u.name !== 'Vatsal Dholariya' || u.email !== 'dholariyavatsal07@gmail.com' || u.mobile !== '7383492261' || !u.role || !('Admin' in u.role)) {
-                    u.name = 'Vatsal Dholariya';
-                    u.email = 'dholariyavatsal07@gmail.com';
-                    u.mobile = '7383492261';
+                if (!u.role || !('Admin' in u.role)) {
                     u.role = { Admin: null };
                     updated = true;
                 }
@@ -443,8 +433,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             if (
                 nameLower.includes('mock') || nameLower.includes('bootstrap') ||
                 usernameLower.includes('mock') || usernameLower.includes('bootstrap') ||
-                emailLower.includes('mock') || emailLower.includes('bootstrap') ||
-                nameLower === 'master admin'
+                emailLower.includes('mock') || emailLower.includes('bootstrap')
             ) {
                 updated = true;
                 return false;
@@ -457,13 +446,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (!hasAdmin) {
             const defaultMasterAdmin = {
                 principalId: 'iahoq-yel46-zc76y-l56vk-2szze-qc2bx-7szyp-hmubf-q3ydd-5dlax-sae',
-                name: 'Vatsal Dholariya',
+                name: 'Master Admin',
                 username: 'admin',
                 role: { Admin: null },
                 createdAt: Date.now().toString(),
                 status: 'Active',
-                email: 'dholariyavatsal07@gmail.com',
-                mobile: '7383492261',
+                email: '',
+                mobile: '',
                 address: 'Gujarat, India',
                 profilePhoto: '',
                 passwordHash: 'bf6b5bdb74c79ece9fc0ad0ac9fb0359f9555d4f35a83b2e6ec69ae99e09603d', // SHA-256 of admin:admin123
@@ -484,8 +473,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 role: { Staff: null },
                 createdAt: Date.now().toString(),
                 status: 'Active',
-                email: 'vatsal01@example.com',
-                mobile: '7383492262',
+                email: '',
+                mobile: '',
                 address: 'Gujarat, India',
                 profilePhoto: '',
                 passwordHash: 'ff5a377586142e9d6e1f9626dbbe2f5f2ff30b9e38e5bf1b839977bafc25c0ab', // SHA-256 of vatsal01:admin123
@@ -512,19 +501,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (sessionStr) {
             try {
                 const session = JSON.parse(sessionStr);
-                if (session.username === 'admin') {
-                    if (session.name !== 'Vatsal Dholariya') {
-                        session.name = 'Vatsal Dholariya';
-                        if (localStorage.getItem('user_session')) {
-                            localStorage.setItem('user_session', JSON.stringify(session));
-                        } else {
-                            sessionStorage.setItem('user_session', JSON.stringify(session));
-                        }
-                    }
-                } else {
+                if (session.username !== 'admin') {
                     const stillExists = usersList.some((u: any) => u.username === session.username);
                     if (!stillExists) {
-                        localStorage.removeItem('user_session');
+                        queryClient.clear();
+        localStorage.removeItem('user_session');
                         sessionStorage.removeItem('user_session');
                     }
                 }

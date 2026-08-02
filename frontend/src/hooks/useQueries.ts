@@ -1,35 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from './queryKeys';
+import {
+  InvoiceRepository,
+  DashboardRepository,
+  SettingsRepository,
+  UserRepository,
+  ProductRepository,
+  CustomerRepository,
+  RawMaterialRepository,
+  PurchaseRepository,
+  ExpenseRepository,
+  InventoryRepository,
+  ProductionRepository,
+  VendorRepository,
+} from '../repositories';
 import { useActor } from './useActor';
-import type { Invoice, DashboardStats, Settings, CustomerInfo, User, ActivityLog, ProductItem, CustomerItem, Payment, BOMRequirement, RawMaterial, PurchaseItem, Purchase, Expense, VendorPayment, MaterialConsumptionEntry, Employee, JobWork, EmployeePayment, EmployeeDashboardStats, CustomerOrderLink, KarigarCollection, StockMovement, AuditLog, EmployeeLedgerEntry, Permissions, SalesOrder, ProductionRequirement, PurchaseRequirement, MRPRecord, PurchaseOrder, GRN } from '../backend';
-import { getOptionalBoolean } from '../utils/candidHelpers';
-import { getVendorMasters, saveVendorMaster, deleteVendorMaster, getRawMaterialMasters } from '../utils/masterData';
-
-export function enrichInvoiceWithSnapshot(inv: Invoice): Invoice {
-  if (!inv) return inv;
-  const taxIdParts = (inv.customerInfo?.taxId || '').split('|');
-  const hasSnapshot = taxIdParts.length > 11 && taxIdParts[6] !== '' && !isNaN(Number(taxIdParts[6]));
-
-  return {
-    ...inv,
-    previousBalanceAtCreation: hasSnapshot ? Number(taxIdParts[6]) : (inv.previousBalanceAtCreation !== undefined ? Number(inv.previousBalanceAtCreation) : undefined),
-    advanceBalanceAtCreation: hasSnapshot ? Number(taxIdParts[7]) : (inv.advanceBalanceAtCreation !== undefined ? Number(inv.advanceBalanceAtCreation) : undefined),
-    currentInvoiceTotalAtCreation: hasSnapshot ? Number(taxIdParts[8]) : (inv.currentInvoiceTotalAtCreation !== undefined ? Number(inv.currentInvoiceTotalAtCreation) : undefined),
-    totalPayableAtCreation: hasSnapshot ? Number(taxIdParts[9]) : (inv.totalPayableAtCreation !== undefined ? Number(inv.totalPayableAtCreation) : undefined),
-    paidAmountAtCreation: hasSnapshot ? Number(taxIdParts[10]) : (inv.paidAmountAtCreation !== undefined ? Number(inv.paidAmountAtCreation) : undefined),
-    finalDueAtCreation: hasSnapshot ? Number(taxIdParts[11]) : (inv.finalDueAtCreation !== undefined ? Number(inv.finalDueAtCreation) : undefined),
-  };
-}
-
+import type { Invoice, DashboardStats, Settings, CustomerInfo, User, LinkedIdentity, IdentityProviderType, ActivityLog, ProductItem, CustomerItem, Payment, BOMRequirement, RawMaterial, PurchaseItem, Purchase, Expense, VendorPayment, MaterialConsumptionEntry, Employee, JobWork, EmployeePayment, EmployeeDashboardStats, CustomerOrderLink, KarigarCollection, StockMovement, AuditLog, EmployeeLedgerEntry, Permissions, SalesOrder, ProductionRequirement, PurchaseRequirement, MRPRecord, PurchaseOrder, GRN } from '../backend';
 
 // Dashboard Stats
 export function useDashboardStats(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<DashboardStats>({
-    queryKey: ['dashboardStats'],
+    queryKey: queryKeys.dashboardStats(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getDashboardStats();
+      return DashboardRepository.getDashboardStats(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -40,11 +36,10 @@ export function useInvoices(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Invoice[]>({
-    queryKey: ['invoices'],
+    queryKey: queryKeys.invoices(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getInvoices();
-      return (res || []).map(enrichInvoiceWithSnapshot);
+      return InvoiceRepository.getInvoices(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -55,13 +50,12 @@ export function useInvoiceById(id: bigint) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Invoice>({
-    queryKey: ['invoice', id.toString()],
+    queryKey: queryKeys.invoice(id),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getInvoiceById(id);
-      return enrichInvoiceWithSnapshot(res);
+      return InvoiceRepository.getInvoiceById(actor, id);
     },
-    enabled: !!actor && !isFetching && id > 0,
+    enabled: !!actor && !isFetching && id > BigInt(0),
   });
 }
 
@@ -70,10 +64,10 @@ export function useNextInvoiceNumber(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<string>({
-    queryKey: ['nextInvoiceNumber'],
+    queryKey: queryKeys.nextInvoiceNumber(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getNextInvoiceNumber();
+      return InvoiceRepository.getNextInvoiceNumber(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -93,18 +87,12 @@ export function useSaveInvoice() {
       paidAmount: number;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveInvoice(
-        data.businessInfo,
-        data.customerInfo,
-        data.products,
-        data.totalAmount,
-        data.paidAmount
-      );
+      return InvoiceRepository.saveInvoice(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['nextInvoiceNumber'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers() });
     },
   });
 }
@@ -124,19 +112,13 @@ export function useUpdateInvoice() {
       paidAmount: number;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.updateInvoice(
-        data.id,
-        data.businessInfo,
-        data.customerInfo,
-        data.products,
-        data.totalAmount,
-        data.paidAmount
-      );
+      return InvoiceRepository.updateInvoice(actor, data);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice', variables.id.toString()] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoice(variables.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers() });
     },
   });
 }
@@ -149,12 +131,12 @@ export function useDeleteInvoice() {
   return useMutation({
     mutationFn: async (id: bigint) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteInvoice(id);
+      return InvoiceRepository.deleteInvoice(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['nextInvoiceNumber'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers() });
     },
   });
 }
@@ -164,10 +146,10 @@ export function useSettings(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Settings>({
-    queryKey: ['settings'],
+    queryKey: queryKeys.settings(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getSettings();
+      return SettingsRepository.getSettings(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -195,25 +177,10 @@ export function useSaveSettings() {
       lowStockAlertThreshold?: number;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveSettings(
-        data.businessInfo,
-        data.defaultGstRate,
-        data.termsAndConditions,
-        data.allowStaffCollection,
-        data.enableRejectedWage,
-        data.companyLogo,
-        data.companyName,
-        data.themeColors,
-        data.sidebarStyle,
-        data.allowAdminBackupRestore,
-        data.enableAutoStockAlerts,
-        data.alertFrequency,
-        data.lowStockAlertThreshold
-      );
+      return SettingsRepository.saveSettings(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings() });
     },
   });
 }
@@ -223,15 +190,10 @@ export function useUserSelf() {
   const { actor, isFetching } = useActor();
 
   return useQuery<User | null>({
-    queryKey: ['userSelf'],
+    queryKey: queryKeys.userSelf(),
     queryFn: async () => {
       if (!actor) return null;
-      const u = await actor.registerOrGetSelf();
-      if (!u) return null;
-      return {
-        ...u,
-        needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange")
-      };
+      return UserRepository.registerOrGetSelf(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -242,31 +204,53 @@ export function useUsers(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<User[]>({
-    queryKey: ['users'],
+    queryKey: queryKeys.users(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const users = await actor.getUsers();
-      try {
-        const cleanUsers = users.map(u => ({
-          ...u,
-          needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange")
-        }));
-        const serialized = cleanUsers.map(u => ({
-          ...u,
-          principalId: u.principalId.toString(),
-          createdAt: u.createdAt.toString()
-        }));
-        localStorage.setItem('mock_users', JSON.stringify(serialized));
-        return cleanUsers;
-      } catch (err) {
-        console.error('Failed to cache canister users in mock_users:', err);
-      }
-      return users.map(u => ({
-        ...u,
-        needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange")
-      }));
+      return UserRepository.getUsers(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
+  });
+}
+
+// Link Identity to User (Admin only)
+export function useLinkIdentity() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      targetPrincipalText: string;
+      providerTypeVariant: IdentityProviderType;
+      providerId: string;
+    }) => {
+      if (!actor) throw new Error('Actor not initialized');
+      return UserRepository.linkIdentityToUser(actor, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userSelf() });
+    },
+  });
+}
+
+// Unlink Identity from User (Admin only)
+export function useUnlinkIdentity() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      targetPrincipalText: string;
+      providerId: string;
+    }) => {
+      if (!actor) throw new Error('Actor not initialized');
+      return UserRepository.unlinkIdentityFromUser(actor, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userSelf() });
+    },
   });
 }
 
@@ -291,24 +275,11 @@ export function useCreateUser() {
       permissionsObj?: Permissions;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.createUser(
-        data.principalText,
-        data.name,
-        data.username,
-        data.roleText,
-        data.email,
-        data.mobile,
-        data.address,
-        data.profilePhoto,
-        data.status,
-        data.passwordHash,
-        data.departmentText,
-        data.permissionsObj
-      );
+      return UserRepository.createUser(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -331,22 +302,12 @@ export function useEditUser() {
       permissionsObj?: Permissions;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.editUser(
-        data.principalText,
-        data.name,
-        data.username,
-        data.email,
-        data.mobile,
-        data.roleText,
-        data.status,
-        data.departmentText,
-        data.permissionsObj
-      );
+      return UserRepository.editUser(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['userSelf'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userSelf() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -359,11 +320,11 @@ export function useDeleteUser() {
   return useMutation({
     mutationFn: async (principalText: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteUser(principalText);
+      return UserRepository.deleteUser(actor, principalText);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -382,12 +343,12 @@ export function useUpdateProfile() {
       profilePhoto: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.updateProfile(data.email, data.name, data.mobile, data.address, data.profilePhoto);
+      return UserRepository.updateProfile(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userSelf'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userSelf() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -403,12 +364,12 @@ export function useChangePassword() {
       newPrincipalId: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.changePassword(data.newPassword, data.newPrincipalId);
+      return UserRepository.changePassword(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['userSelf'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.userSelf() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -424,11 +385,11 @@ export function useToggleUserStatus() {
       status: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.toggleUserStatus(data.principalText, data.status);
+      return UserRepository.toggleUserStatus(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -445,11 +406,11 @@ export function useAdminResetPassword() {
       newPasswordHash?: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.adminResetPassword(data.principalText, data.newPrincipalId, data.newPasswordHash);
+      return UserRepository.adminResetPassword(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -460,10 +421,10 @@ export function useActivityLogs(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<ActivityLog[]>({
-    queryKey: ['activityLogs'],
+    queryKey: queryKeys.activityLogs(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getActivityLogs();
+      return UserRepository.getActivityLogs(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -474,10 +435,10 @@ export function useProducts(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<ProductItem[]>({
-    queryKey: ['products'],
+    queryKey: queryKeys.products(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getProducts();
+      return ProductRepository.getProducts(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -499,12 +460,12 @@ export function useSaveProduct() {
       bom: BOMRequirement[];
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveProduct(data.id, data.vigat, data.rate, data.hsnCode, data.stock, data.productionCost, data.bom);
+      return ProductRepository.saveProduct(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
     },
   });
 }
@@ -517,11 +478,11 @@ export function useDeleteProduct() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteProduct(id);
+      return ProductRepository.deleteProduct(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -531,10 +492,10 @@ export function useCustomers(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<CustomerItem[]>({
-    queryKey: ['customers'],
+    queryKey: queryKeys.customers(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getCustomers();
+      return CustomerRepository.getCustomers(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -554,11 +515,11 @@ export function useSaveCustomer() {
       gstNo: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveCustomer(data.id, data.name, data.businessAddress, data.phone, data.gstNo);
+      return CustomerRepository.saveCustomer(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -571,11 +532,11 @@ export function useDeleteCustomer() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteCustomer(id);
+      return CustomerRepository.deleteCustomer(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -592,14 +553,14 @@ export function useCollectPayment() {
       notes: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.collectPayment(data.customerId, data.amount, data.notes);
+      return CustomerRepository.collectPayment(actor, data);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      queryClient.invalidateQueries({ queryKey: ['payments', variables.customerId] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.payments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.payments(variables.customerId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -610,7 +571,7 @@ export function useLogUserAction() {
   return useMutation({
     mutationFn: async (data: { action: string; details: string }) => {
       if (!actor) return;
-      return actor.logUserAction(data.action, data.details);
+      return UserRepository.logUserAction(actor, data);
     }
   });
 }
@@ -620,10 +581,10 @@ export function usePayments(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Payment[]>({
-    queryKey: ['payments'],
+    queryKey: queryKeys.payments(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPayments();
+      return CustomerRepository.getPayments(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -634,10 +595,10 @@ export function usePaymentsByCustomer(customerId: string, options?: { enabled?: 
   const { actor, isFetching } = useActor();
 
   return useQuery<Payment[]>({
-    queryKey: ['payments', customerId],
+    queryKey: queryKeys.payments(customerId),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPaymentsByCustomer(customerId);
+      return CustomerRepository.getPaymentsByCustomer(actor, customerId);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching && !!customerId,
   });
@@ -650,11 +611,10 @@ export function useRawMaterials(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<RawMaterial[]>({
-    queryKey: ['rawMaterials'],
+    queryKey: queryKeys.rawMaterials(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const raw = await actor.getRawMaterials();
-      return getRawMaterialMasters(raw);
+      return RawMaterialRepository.getRawMaterials(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -679,23 +639,12 @@ export function useSaveRawMaterial() {
       preferredVendor?: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveRawMaterial(
-        data.id,
-        data.name,
-        data.category,
-        data.openingStock,
-        data.unitCost,
-        data.unit,
-        data.minStock,
-        data.reorderLevel,
-        data.minimumStock,
-        data.preferredVendor
-      );
+      return RawMaterialRepository.saveRawMaterial(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -708,12 +657,12 @@ export function useDeleteRawMaterial() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteRawMaterial(id);
+      return RawMaterialRepository.deleteRawMaterial(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -723,10 +672,10 @@ export function usePurchases(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Purchase[]>({
-    queryKey: ['purchases'],
+    queryKey: queryKeys.purchases(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPurchases();
+      return PurchaseRepository.getPurchases(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -749,22 +698,13 @@ export function useSavePurchase() {
       paidAmount: number;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.savePurchase(
-        data.purchaseNumber,
-        data.vendorName,
-        data.vendorMobile,
-        data.vendorGstNumber,
-        data.vendorAddress,
-        data.items,
-        data.totalAmount,
-        data.paidAmount
-      );
+      return PurchaseRepository.savePurchase(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -777,13 +717,13 @@ export function useDeletePurchase() {
   return useMutation({
     mutationFn: async (id: bigint) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deletePurchase(id);
+      return PurchaseRepository.deletePurchase(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -793,10 +733,10 @@ export function usePurchaseInvoices(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<any[]>({
-    queryKey: ['purchaseInvoices'],
+    queryKey: queryKeys.purchaseInvoices(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPurchaseInvoices();
+      return PurchaseRepository.getPurchaseInvoices(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -807,10 +747,10 @@ export function usePurchaseInvoiceById(id: string, options?: { enabled?: boolean
   const { actor, isFetching } = useActor();
 
   return useQuery<any>({
-    queryKey: ['purchaseInvoice', id],
+    queryKey: queryKeys.purchaseInvoice(id),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPurchaseInvoiceById(id);
+      return PurchaseRepository.getPurchaseInvoiceById(actor, id);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching && !!id,
   });
@@ -824,17 +764,17 @@ export function useRecordPurchasePayment() {
   return useMutation({
     mutationFn: async (data: { invoiceId: string; paymentData: any }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.recordPurchasePayment(data.invoiceId, data.paymentData);
+      return PurchaseRepository.recordPurchasePayment(actor, data);
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseInvoices'] });
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseInvoice', variables.invoiceId] });
-      queryClient.invalidateQueries({ queryKey: ['vendorOutstanding'] });
-      queryClient.invalidateQueries({ queryKey: ['vendorLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['systemAuditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseInvoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseInvoice(variables.invoiceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorOutstanding() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.systemAuditLogs() });
     },
   });
 }
@@ -847,17 +787,17 @@ export function useCancelPurchaseInvoice() {
   return useMutation({
     mutationFn: async (invoiceId: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.cancelPurchaseInvoice(invoiceId);
+      return PurchaseRepository.cancelPurchaseInvoice(actor, invoiceId);
     },
     onSuccess: (_, invoiceId) => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseInvoices'] });
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseInvoice', invoiceId] });
-      queryClient.invalidateQueries({ queryKey: ['vendorOutstanding'] });
-      queryClient.invalidateQueries({ queryKey: ['vendorLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['systemAuditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseInvoices() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseInvoice(invoiceId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorOutstanding() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.systemAuditLogs() });
     },
   });
 }
@@ -879,8 +819,8 @@ export function useLogPurchaseInvoiceAction() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['systemAuditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.systemAuditLogs() });
     }
   });
 }
@@ -890,10 +830,10 @@ export function usePurchaseOrders(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<PurchaseOrder[]>({
-    queryKey: ['purchaseOrders'],
+    queryKey: queryKeys.purchaseOrders(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getPurchaseOrders();
+      return PurchaseRepository.getPurchaseOrders(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -907,12 +847,12 @@ export function useSavePurchaseOrder() {
   return useMutation({
     mutationFn: async (po: PurchaseOrder) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.savePurchaseOrder(po);
+      return PurchaseRepository.savePurchaseOrder(actor, po);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -925,12 +865,12 @@ export function useDeletePurchaseOrder() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deletePurchaseOrder(id);
+      return PurchaseRepository.deletePurchaseOrder(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -940,10 +880,10 @@ export function useGRNs(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<GRN[]>({
-    queryKey: ['grns'],
+    queryKey: queryKeys.grns(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getGRNs();
+      return PurchaseRepository.getGRNs(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -957,11 +897,11 @@ export function useSaveGRN() {
   return useMutation({
     mutationFn: async (grn: GRN) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveGRN(grn);
+      return PurchaseRepository.saveGRN(actor, grn);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['grns'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.grns() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -974,17 +914,17 @@ export function useReceivePOItem() {
   return useMutation({
     mutationFn: async (data: { poId: string; qty: number; invoiceNo: string; expiryDate?: string; remarks?: string }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.receivePOItem(data.poId, data.qty, data.invoiceNo, data.expiryDate, data.remarks);
+      return PurchaseRepository.receivePOItem(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['grns'] });
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.grns() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -994,10 +934,10 @@ export function useExpenses(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Expense[]>({
-    queryKey: ['expenses'],
+    queryKey: queryKeys.expenses(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getExpenses();
+      return ExpenseRepository.getExpenses(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1015,12 +955,12 @@ export function useSaveExpense() {
       description: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveExpense(data.category, data.amount, data.description);
+      return ExpenseRepository.saveExpense(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1033,12 +973,12 @@ export function useDeleteExpense() {
   return useMutation({
     mutationFn: async (id: bigint) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteExpense(id);
+      return ExpenseRepository.deleteExpense(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.expenses() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1055,13 +995,13 @@ export function useCollectVendorPayment() {
       notes: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.collectVendorPayment(data.vendorName, data.amount, data.notes);
+      return ExpenseRepository.collectVendorPayment(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendorPayments'] });
-      queryClient.invalidateQueries({ queryKey: ['purchases'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendorPayments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchases() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1071,10 +1011,10 @@ export function useVendorPayments(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<VendorPayment[]>({
-    queryKey: ['vendorPayments'],
+    queryKey: queryKeys.vendorPayments(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getVendorPayments();
+      return ExpenseRepository.getVendorPayments(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1085,10 +1025,10 @@ export function useMaterialConsumptionHistory() {
   const { actor, isFetching } = useActor();
 
   return useQuery<MaterialConsumptionEntry[]>({
-    queryKey: ['consumptionHistory'],
+    queryKey: queryKeys.consumptionHistory(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getMaterialConsumptionHistory();
+      return InventoryRepository.getMaterialConsumptionHistory(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -1099,10 +1039,10 @@ export function useEmployees(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<Employee[]>({
-    queryKey: ['employees'],
+    queryKey: queryKeys.employees(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getEmployees();
+      return ProductionRepository.getEmployees(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1124,12 +1064,12 @@ export function useSaveEmployee() {
       status: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveEmployee(data.id, data.name, data.mobile, data.address, data.joiningDate, data.skillType, data.status);
+      return ProductionRepository.saveEmployee(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1142,12 +1082,12 @@ export function useDeleteEmployee() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteEmployee(id);
+      return ProductionRepository.deleteEmployee(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1157,10 +1097,10 @@ export function useJobWorks(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<JobWork[]>({
-    queryKey: ['jobWorks'],
+    queryKey: queryKeys.jobWorks(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getJobWorks();
+      return ProductionRepository.getJobWorks(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1186,24 +1126,12 @@ export function useSaveJobWork() {
       customerOrderLink: CustomerOrderLink | null;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveJobWork(
-        data.jobDate,
-        data.employeeName,
-        data.mobileNumber,
-        data.productName,
-        data.productCode,
-        data.hsnCode,
-        data.qtyGiven,
-        data.ratePerPiece,
-        data.expectedReturnDate,
-        data.remarks,
-        data.customerOrderLink
-      );
+      return ProductionRepository.saveJobWork(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['jobWorks'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobWorks() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1220,12 +1148,12 @@ export function useUpdateJobProgress() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.updateJobWorkProgress(data.jobId, data.completedQty, data.remarks);
+      return ProductionRepository.updateJobWorkProgress(actor, data.jobId, data.completedQty, data.remarks);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['jobWorks'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobWorks() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1235,10 +1163,10 @@ export function useEmployeePayments(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<EmployeePayment[]>({
-    queryKey: ['employeePayments'],
+    queryKey: queryKeys.employeePayments(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getEmployeePayments();
+      return ProductionRepository.getEmployeePayments(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1257,14 +1185,14 @@ export function useSaveEmployeePayment() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveEmployeePayment(data.employeeName, data.amountPaid, data.paymentMode, data.remarks);
+      return ProductionRepository.saveEmployeePayment(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employeePayments'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeePayments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
     },
   });
 }
@@ -1282,14 +1210,14 @@ export function useEditEmployeePayment() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.editEmployeePayment(data.paymentId, data.amountPaid, data.paymentMode, data.remarks);
+      return ProductionRepository.editEmployeePayment(actor, data.paymentId, data.amountPaid, data.paymentMode, data.remarks);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employeePayments'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeePayments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
     },
   });
 }
@@ -1302,14 +1230,14 @@ export function useDeleteEmployeePayment() {
   return useMutation({
     mutationFn: async (paymentId: bigint) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteEmployeePayment(paymentId);
+      return ProductionRepository.deleteEmployeePayment(actor, paymentId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employeePayments'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeePayments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
     },
   });
 }
@@ -1319,10 +1247,10 @@ export function useEmployeeDashboard(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<EmployeeDashboardStats>({
-    queryKey: ['employeeDashboard'],
+    queryKey: queryKeys.employeeDashboard(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getEmployeeDashboardStats();
+      return ProductionRepository.getEmployeeDashboardStats(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1333,10 +1261,10 @@ export function useCollections(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<KarigarCollection[]>({
-    queryKey: ['collections'],
+    queryKey: queryKeys.collections(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getCollections();
+      return ProductionRepository.getCollections(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1355,24 +1283,19 @@ export function useSaveCollection() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveCollectionEntry(
-        data.jobWorkNo,
-        data.todayCollectedQty,
-        data.rejectedQty,
-        data.remarks
-      );
+      return ProductionRepository.saveCollectionEntry(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['jobWorks'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['stockReconciliation'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobWorks() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockMovements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockReconciliation() });
     },
   });
 }
@@ -1390,24 +1313,19 @@ export function useEditCollection() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.editCollectionEntry(
-        data.collectionId,
-        data.todayCollectedQty,
-        data.rejectedQty,
-        data.remarks
-      );
+      return ProductionRepository.editCollectionEntry(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['jobWorks'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['stockReconciliation'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobWorks() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockMovements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockReconciliation() });
     },
   });
 }
@@ -1420,19 +1338,19 @@ export function useDeleteCollection() {
   return useMutation({
     mutationFn: async (collectionId: bigint) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteCollectionEntry(collectionId);
+      return ProductionRepository.deleteCollectionEntry(actor, collectionId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['jobWorks'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['employeeDashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
-      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['karigarLedger'] });
-      queryClient.invalidateQueries({ queryKey: ['stockReconciliation'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobWorks() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.employeeDashboard() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockMovements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.auditLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.karigarLedger() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockReconciliation() });
     },
   });
 }
@@ -1442,10 +1360,10 @@ export function useStockMovements() {
   const { actor, isFetching } = useActor();
 
   return useQuery<StockMovement[]>({
-    queryKey: ['stockMovements'],
+    queryKey: queryKeys.stockMovements(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getStockMovementHistory();
+      return InventoryRepository.getStockMovementHistory(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -1456,10 +1374,10 @@ export function useAuditLogs() {
   const { actor, isFetching } = useActor();
 
   return useQuery<AuditLog[]>({
-    queryKey: ['auditLogs'],
+    queryKey: queryKeys.auditLogs(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getSystemAuditLogs();
+      return InventoryRepository.getSystemAuditLogs(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -1470,10 +1388,10 @@ export function useKarigarLedger(employeeName: string, options?: { enabled?: boo
   const { actor, isFetching } = useActor();
 
   return useQuery<EmployeeLedgerEntry[]>({
-    queryKey: ['karigarLedger', employeeName],
+    queryKey: queryKeys.karigarLedger(employeeName),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getKarigarLedger(employeeName);
+      return ProductionRepository.getKarigarLedger(actor, employeeName);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching && !!employeeName,
   });
@@ -1484,10 +1402,10 @@ export function useConsumptionLogs(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<any[]>({
-    queryKey: ['consumptionLogs'],
+    queryKey: queryKeys.consumptionLogs(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getConsumptionLogs();
+      return InventoryRepository.getConsumptionLogs(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
   });
@@ -1511,23 +1429,13 @@ export function useSaveConsumptionLog() {
       remarks: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveConsumptionLog(
-        data.productName,
-        data.batchNo,
-        data.rawMaterialName,
-        data.quantityUsed,
-        data.unit,
-        data.cost,
-        data.employee,
-        data.jobWorkNo,
-        data.remarks
-      );
+      return InventoryRepository.saveConsumptionLog(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumptionLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.consumptionLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1537,10 +1445,10 @@ export function useFinishedGoodsLogs() {
   const { actor, isFetching } = useActor();
 
   return useQuery<any[]>({
-    queryKey: ['finishedGoodsLogs'],
+    queryKey: queryKeys.finishedGoodsLogs(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.getFinishedGoodsLogs();
+      return InventoryRepository.getFinishedGoodsLogs(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -1559,19 +1467,14 @@ export function useSaveFinishedGoodsLog() {
       reason: string;
     }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveFinishedGoodsLog(
-        data.productName,
-        data.quantity,
-        data.logType,
-        data.reason
-      );
+      return InventoryRepository.saveFinishedGoodsLog(actor, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['finishedGoodsLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['stockReconciliation'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.finishedGoodsLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockReconciliation() });
     },
   });
 }
@@ -1581,10 +1484,10 @@ export function useStockReconciliation() {
   const { actor, isFetching } = useActor();
 
   return useQuery<any[]>({
-    queryKey: ['stockReconciliation'],
+    queryKey: queryKeys.stockReconciliation(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.checkStockReconciliation();
+      return InventoryRepository.checkStockReconciliation(actor);
     },
     enabled: !!actor && !isFetching,
   });
@@ -1595,10 +1498,10 @@ export function useSalesOrders(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<SalesOrder[]>({
-    queryKey: ['salesOrders'],
+    queryKey: queryKeys.salesOrders(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getSalesOrders();
+      const res = await ProductionRepository.getSalesOrders(actor);
       return res || [];
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
@@ -1612,15 +1515,15 @@ export function useSaveSalesOrder() {
   return useMutation({
     mutationFn: async (order: SalesOrder) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveSalesOrder(order);
+      return ProductionRepository.saveSalesOrder(actor, order);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salesOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1632,12 +1535,12 @@ export function useDeleteSalesOrder() {
   return useMutation({
     mutationFn: async (id: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.deleteSalesOrder(id);
+      return ProductionRepository.deleteSalesOrder(actor, id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salesOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1647,10 +1550,10 @@ export function useProductionRequirements(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<ProductionRequirement[]>({
-    queryKey: ['productionRequirements'],
+    queryKey: queryKeys.productionRequirements(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getProductionRequirements();
+      const res = await ProductionRepository.getProductionRequirements(actor);
       return res || [];
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
@@ -1664,12 +1567,12 @@ export function useSaveProductionRequirement() {
   return useMutation({
     mutationFn: async (req: ProductionRequirement) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.saveProductionRequirement(req);
+      return ProductionRepository.saveProductionRequirement(actor, req);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1679,10 +1582,10 @@ export function usePurchaseRequirements(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<PurchaseRequirement[]>({
-    queryKey: ['purchaseRequirements'],
+    queryKey: queryKeys.purchaseRequirements(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getPurchaseRequirements();
+      const res = await ProductionRepository.getPurchaseRequirements(actor);
       return res || [];
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
@@ -1696,12 +1599,12 @@ export function useSavePurchaseRequirement() {
   return useMutation({
     mutationFn: async (req: PurchaseRequirement) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.savePurchaseRequirement(req);
+      return ProductionRepository.savePurchaseRequirement(actor, req);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1710,10 +1613,10 @@ export function useMRPRecords(options?: { enabled?: boolean }) {
   const { actor, isFetching } = useActor();
 
   return useQuery<MRPRecord[]>({
-    queryKey: ['mrpRecords'],
+    queryKey: queryKeys.mrpRecords(),
     queryFn: async () => {
       if (!actor) throw new Error('Actor not initialized');
-      const res = await actor.getMRPRecords();
+      const res = await ProductionRepository.getMRPRecords(actor);
       return res || [];
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
@@ -1727,12 +1630,12 @@ export function useRunMRP() {
   return useMutation({
     mutationFn: async (requirementId: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.runMRP(requirementId);
+      return ProductionRepository.runMRP(actor, requirementId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mrpRecords'] });
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.mrpRecords() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1744,14 +1647,14 @@ export function useReserveStockForOrder() {
   return useMutation({
     mutationFn: async (orderId: string) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.reserveStockForOrder(orderId);
+      return ProductionRepository.reserveStockForOrder(actor, orderId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salesOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salesOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1763,16 +1666,16 @@ export function useCompleteProductionPlan() {
   return useMutation({
     mutationFn: async (data: { requirementId: string; completedQty: number }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.completeProductionPlan(data.requirementId, data.completedQty);
+      return ProductionRepository.completeProductionPlan(actor, data.requirementId, data.completedQty);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['salesOrders'] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['finishedGoodsLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.salesOrders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.finishedGoodsLogs() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1784,14 +1687,14 @@ export function useReceivePurchaseRequirement() {
   return useMutation({
     mutationFn: async (data: { requirementId: string; qty: number }) => {
       if (!actor) throw new Error('Actor not initialized');
-      return actor.receivePurchaseRequirement(data.requirementId, data.qty);
+      return ProductionRepository.receivePurchaseRequirement(actor, data.requirementId, data.qty);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
-      queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-      queryClient.invalidateQueries({ queryKey: ['mrpRecords'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.mrpRecords() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.activityLogs() });
     },
   });
 }
@@ -1799,9 +1702,9 @@ export function useReceivePurchaseRequirement() {
 // Get all vendors (from localStorage)
 export function useVendors() {
   return useQuery<any[]>({
-    queryKey: ['vendors'],
+    queryKey: queryKeys.vendors(),
     queryFn: async () => {
-      return getVendorMasters();
+      return VendorRepository.getVendors();
     }
   });
 }
@@ -1811,10 +1714,10 @@ export function useSaveVendor() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (vendor: any) => {
-      return saveVendorMaster(vendor);
+      return VendorRepository.saveVendor(vendor);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendors() });
     }
   });
 }
@@ -1824,10 +1727,10 @@ export function useDeleteVendor() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      return deleteVendorMaster(id);
+      return VendorRepository.deleteVendor(id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendors'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.vendors() });
     }
   });
 }

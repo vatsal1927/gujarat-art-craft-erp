@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../hooks/queryKeys';
 import { useProductionRequirements, useSaveProductionRequirement, useCompleteProductionPlan, useMRPRecords, useRunMRP, useProducts, useRawMaterials } from '../hooks/useQueries';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -247,7 +248,7 @@ const ProductionPlanning = () => {
     if (updated) {
       localStorage.setItem('mock_purchase_requirements', JSON.stringify(purchaseReqs));
       console.log("Generated Purchase Requirements", purchaseReqs);
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
     }
 
     const associatedMRP = mrpRecords.find(m => m.productionRequirementId === selectedReq.id);
@@ -354,16 +355,16 @@ const ProductionPlanning = () => {
     if (updated) {
       localStorage.setItem('mock_purchase_requirements', JSON.stringify(purchaseReqs));
       console.log("Generated Purchase Requirements", purchaseReqs);
-      queryClient.invalidateQueries({ queryKey: ['purchaseRequirements'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.purchaseRequirements() });
     }
 
     runMRP(req.id, {
       onSuccess: (data) => {
         toast.success("MRP calculation updated.");
-        queryClient.invalidateQueries({ queryKey: ['mrpRecords'] });
-        queryClient.invalidateQueries({ queryKey: ['productionRequirements'] });
-        queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.mrpRecords() });
+        queryClient.invalidateQueries({ queryKey: queryKeys.productionRequirements() });
+        queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+        queryClient.invalidateQueries({ queryKey: queryKeys.products() });
         
         if (data && data.requiredMaterials && data.requiredMaterials.length > 0) {
           const mergedReqMaterials = calculated.requiredMaterials.map(calculatedMat => {
@@ -382,8 +383,8 @@ const ProductionPlanning = () => {
       onError: (err) => {
         console.error("Backend MRP calculation error, using local fallback", err);
         toast.success("MRP calculation updated (local).");
-        queryClient.invalidateQueries({ queryKey: ['rawMaterials'] });
-        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.rawMaterials() });
+        queryClient.invalidateQueries({ queryKey: queryKeys.products() });
       }
     });
   };

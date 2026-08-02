@@ -6,8 +6,7 @@ import { createActorWithConfig } from '../config';
 import { MockBackend } from '../mockBackend';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import { hexToBuf } from '../utils/credentialDerivation';
-
-const ACTOR_QUERY_KEY = 'actor';
+import { queryKeys } from './queryKeys';
 
 export function useActor(): { actor: backendInterface | null; isFetching: boolean } {
     const { identity: iiIdentity } = useInternetIdentity();
@@ -33,7 +32,7 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
     })();
 
     const actorQuery = useQuery<backendInterface>({
-        queryKey: [ACTOR_QUERY_KEY, activeIdentity?.getPrincipal().toString()],
+        queryKey: queryKeys.actor(activeIdentity?.getPrincipal().toString()),
         queryFn: async () => {
             try {
                 const isAuthenticated = !!activeIdentity;
@@ -75,14 +74,15 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
     // When the actor changes, invalidate dependent queries
     useEffect(() => {
         if (actorQuery.data) {
+            const actorKeyRoot = queryKeys.actor()[0];
             queryClient.invalidateQueries({
                 predicate: (query) => {
-                    return !query.queryKey.includes(ACTOR_QUERY_KEY);
+                    return !query.queryKey.includes(actorKeyRoot);
                 }
             });
             queryClient.refetchQueries({
                 predicate: (query) => {
-                    return !query.queryKey.includes(ACTOR_QUERY_KEY);
+                    return !query.queryKey.includes(actorKeyRoot);
                 }
             });
         }
