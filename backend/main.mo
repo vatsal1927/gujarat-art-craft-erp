@@ -54,6 +54,51 @@ actor {
     canAccessReports : Bool;
   };
 
+  public type PermissionKey = {
+    #canView;
+    #canCreate;
+    #canEdit;
+    #canDelete;
+    #canApprove;
+    #canExport;
+    #canPrint;
+    #canManageStaff;
+    #canViewLogs;
+    #canBackupRestore;
+    #canAdjustStock;
+    #canAccessFinance;
+    #canAccessReports;
+  };
+
+  func permissionKeyToText(key : PermissionKey) : Text {
+    switch (key) {
+      case (#canView) "canView";
+      case (#canCreate) "canCreate";
+      case (#canEdit) "canEdit";
+      case (#canDelete) "canDelete";
+      case (#canApprove) "canApprove";
+      case (#canExport) "canExport";
+      case (#canPrint) "canPrint";
+      case (#canManageStaff) "canManageStaff";
+      case (#canViewLogs) "canViewLogs";
+      case (#canBackupRestore) "canBackupRestore";
+      case (#canAdjustStock) "canAdjustStock";
+      case (#canAccessFinance) "canAccessFinance";
+      case (#canAccessReports) "canAccessReports";
+    };
+  };
+
+  public type IdentityProviderType = {
+    #InternetIdentity;
+    #Future : Text;
+  };
+
+  public type LinkedIdentity = {
+    providerType : IdentityProviderType;
+    providerId : Text;
+    linkedAt : Time.Time;
+  };
+
   public type User = {
     principalId : Principal;
     name : Text;
@@ -70,6 +115,7 @@ actor {
     lastLogin : ?Text;
     department : ?Department;
     permissions : ?Permissions;
+    linkedIdentities : ?[LinkedIdentity];
   };
 
   public type ActivityLog = {
@@ -648,6 +694,9 @@ actor {
   var lastInvoiceId = 0;
   var settings : ?Settings = null;
 
+  stable var masterAdminUsername : Text = "admin";
+  stable var masterAdminName : Text = "Master Admin";
+
   let users = Map.empty<Text, User>();
   var userCount = 0;
 
@@ -706,9 +755,30 @@ actor {
   var lastAuditLogId = 0;
   var lastEmployeeLedgerId = 0;
 
+  func findUserByPrincipalInternal(principalText : Text) : ?User {
+    switch (users.get(principalText)) {
+      case (?u) { ?u };
+      case (null) {
+        for (u in users.values()) {
+          switch (u.linkedIdentities) {
+            case (?identities) {
+              for (id in identities.vals()) {
+                if (id.providerId == principalText) {
+                  return ?u;
+                };
+              };
+            };
+            case (null) {};
+          };
+        };
+        null;
+      };
+    };
+  };
+
   func logActivity(userPrincipal : Principal, action : Text, details : Text) {
     let principalText = Principal.toText(userPrincipal);
-    let userName = switch (users.get(principalText)) {
+    let userName = switch (findUserByPrincipalInternal(principalText)) {
       case (?u) { u.name };
       case (null) { "System" };
     };
@@ -729,7 +799,7 @@ actor {
 
   func createAuditLogInternal(userPrincipal : Text, action : Text, description : Text) {
     let id = lastAuditLogId + 1;
-    let userName = switch (users.get(userPrincipal)) {
+    let userName = switch (findUserByPrincipalInternal(userPrincipal)) {
       case (?u) { u.name };
       case (null) { userPrincipal };
     };
@@ -761,7 +831,7 @@ actor {
       switch (u.role) {
         case (#Admin) {
           adminCount := adminCount + 1;
-          if (u.username == "admin" and u.name == "Vatsal Dholariya") {
+          if (u.username == masterAdminUsername) {
             masterAdminValid := true;
           };
         };
@@ -1005,7 +1075,7 @@ actor {
     for (u in allUsers.vals()) {
       switch (u.role) {
         case (#Admin) {
-          if (u.username != "admin") {
+          if (u.username != masterAdminUsername) {
             let updatedUser : User = {
               principalId = u.principalId;
               name = u.name;
@@ -1062,9 +1132,9 @@ actor {
     };
   };
 
-  func checkPermissions(caller : Principal, allowedDepts : [Department], requiredToggle : Text) : User {
+  func checkPermissions(caller : Principal, allowedDepts : [Department], requiredToggle : PermissionKey) : User {
     let callerText = Principal.toText(caller);
-    let callerUser = switch (users.get(callerText)) {
+    let callerUser = switch (findUserByPrincipalInternal(callerText)) {
       case (?u) { u };
       case (null) {
         createAuditLogInternal("Unknown", "Unauthorized Department Access", "Caller: " # callerText # " tried accessing protected function.");
@@ -1106,23 +1176,24 @@ actor {
       };
     };
 
-    let hasPerm = if (requiredToggle == "canView") { perms.canView }
-      else if (requiredToggle == "canCreate") { perms.canCreate }
-      else if (requiredToggle == "canEdit") { perms.canEdit }
-      else if (requiredToggle == "canDelete") { perms.canDelete }
-      else if (requiredToggle == "canApprove") { perms.canApprove }
-      else if (requiredToggle == "canExport") { perms.canExport }
-      else if (requiredToggle == "canPrint") { perms.canPrint }
-      else if (requiredToggle == "canManageStaff") { perms.canManageStaff }
-      else if (requiredToggle == "canViewLogs") { perms.canViewLogs }
-      else if (requiredToggle == "canBackupRestore") { perms.canBackupRestore }
-      else if (requiredToggle == "canAdjustStock") { perms.canAdjustStock }
-      else if (requiredToggle == "canAccessFinance") { perms.canAccessFinance }
-      else if (requiredToggle == "canAccessReports") { perms.canAccessReports }
-      else { false };
+    let hasPerm = switch (requiredToggle) {
+      case (#canView) perms.canView;
+      case (#canCreate) perms.canCreate;
+      case (#canEdit) perms.canEdit;
+      case (#canDelete) perms.canDelete;
+      case (#canApprove) perms.canApprove;
+      case (#canExport) perms.canExport;
+      case (#canPrint) perms.canPrint;
+      case (#canManageStaff) perms.canManageStaff;
+      case (#canViewLogs) perms.canViewLogs;
+      case (#canBackupRestore) perms.canBackupRestore;
+      case (#canAdjustStock) perms.canAdjustStock;
+      case (#canAccessFinance) perms.canAccessFinance;
+      case (#canAccessReports) perms.canAccessReports;
+    };
 
     if (not hasPerm) {
-      createAuditLogInternal(callerText, "Unauthorized Department Access", "User " # callerUser.name # " lacks toggle permission: " # requiredToggle);
+      createAuditLogInternal(callerText, "Unauthorized Department Access", "User " # callerUser.name # " lacks toggle permission: " # permissionKeyToText(requiredToggle));
       Runtime.trap("Access denied: insufficient department permission.");
     };
 
@@ -1135,19 +1206,19 @@ actor {
     if (caller == Principal.fromText("2vxsx-fae")) {
       return null;
     };
-    switch (users.get(principalText)) {
+    switch (findUserByPrincipalInternal(principalText)) {
       case (?user) { ?user };
       case (null) {
         if (userCount == 0) {
           let firstUser : User = {
             principalId = caller;
-            name = "Vatsal Dholariya";
-            username = "admin";
+            name = masterAdminName;
+            username = masterAdminUsername;
             role = #Admin;
             createdAt = Time.now();
-            email = ?"dholariyavatsal07@gmail.com";
-            mobile = ?"7383492261";
-            address = ?"Gujarat, India";
+            email = null;
+            mobile = null;
+            address = null;
             profilePhoto = null;
             status = ?"Active";
             passwordHash = ?"bf6b5bdb74c79ece9fc0ad0ac9fb0359f9555d4f35a83b2e6ec69ae99e09603d";
@@ -1418,10 +1489,7 @@ actor {
         logSecurityAudit(caller, "MASTER_ADMIN_DISABLE_BLOCKED", "Blocked deactivation of Master Admin");
         Runtime.trap("Security Violation: Master Admin account cannot be deactivated.");
       };
-      if (name != "Vatsal Dholariya") {
-        Runtime.trap("Security Violation: Cannot rename Master Admin.");
-      };
-      if (username != "admin") {
+      if (username != masterAdminUsername) {
         Runtime.trap("Security Violation: Cannot change Master Admin username.");
       };
     };
@@ -1627,6 +1695,178 @@ actor {
     logActivity(caller, "User disabled/enabled", "Updated status of " # targetUser.username # " to " # status);
   };
 
+  public shared ({ caller }) func linkIdentityToUser(
+    targetPrincipalText : Text,
+    providerTypeVariant : IdentityProviderType,
+    providerId : Text
+  ) : async Text {
+    let callerText = Principal.toText(caller);
+    let adminUser = switch (findUserByPrincipalInternal(callerText)) {
+      case (?u) { u };
+      case (null) { Runtime.trap("Unauthorized: User not found"); };
+    };
+
+    switch (adminUser.role) {
+      case (#Admin) { };
+      case (#Manager) {
+        let perms = switch (adminUser.permissions) {
+          case (?p) { p };
+          case (null) { Runtime.trap("Access denied: insufficient department permission."); };
+        };
+        if (not perms.canManageStaff) {
+          Runtime.trap("Access denied: insufficient department permission.");
+        };
+      };
+      case (#Staff) {
+        Runtime.trap("Access denied: staff cannot link identities.");
+      };
+    };
+
+    var targetKey : ?Text = null;
+    var targetUser : ?User = null;
+
+    if (users.containsKey(targetPrincipalText)) {
+      targetKey := ?targetPrincipalText;
+      targetUser := users.get(targetPrincipalText);
+    } else {
+      for (entry in users.entries()) {
+        let (k, u) = entry;
+        if (u.username == Text.toLower(trimWhitespace(targetPrincipalText))) {
+          targetKey := ?k;
+          targetUser := ?u;
+        };
+      };
+    };
+
+    let userObj = switch (targetUser) {
+      case (?u) { u };
+      case (null) { Runtime.trap("User not found: " # targetPrincipalText); };
+    };
+    let resolvedKey = switch (targetKey) {
+      case (?k) { k };
+      case (null) { Principal.toText(userObj.principalId); };
+    };
+
+    // Requirement 5: Prevent duplicate ERP user records
+    // Check if providerId is already assigned as any user's primary principalId
+    if (users.containsKey(providerId)) {
+      Runtime.trap("Identity is already linked to another ERP user account.");
+    };
+
+    // Check if providerId is already linked to any user
+    for (u in users.values()) {
+      switch (u.linkedIdentities) {
+        case (?identities) {
+          for (id in identities.vals()) {
+            if (id.providerId == providerId) {
+              Runtime.trap("Identity is already linked to another ERP user account.");
+            };
+          };
+        };
+        case (null) {};
+      };
+    };
+
+    let currentIdentities = switch (userObj.linkedIdentities) {
+      case (?ids) { ids };
+      case (null) { [] };
+    };
+
+    let newIdentity : LinkedIdentity = {
+      providerType = providerTypeVariant;
+      providerId;
+      linkedAt = Time.now();
+    };
+
+    let updatedIdentities = Array.append<LinkedIdentity>(currentIdentities, [newIdentity]);
+
+    let updatedUser : User = {
+      userObj with
+      linkedIdentities = ?updatedIdentities;
+    };
+
+    users.add(resolvedKey, updatedUser);
+    logActivity(caller, "Link Identity", "Linked identity " # providerId # " to user " # userObj.name # " (" # userObj.username # ")");
+    createAuditLogInternal(callerText, "Identity Linked", "Linked identity " # providerId # " to user " # userObj.username);
+
+    "Identity linked successfully";
+  };
+
+  public shared ({ caller }) func unlinkIdentityFromUser(
+    targetPrincipalText : Text,
+    providerId : Text
+  ) : async Text {
+    let callerText = Principal.toText(caller);
+    let adminUser = switch (findUserByPrincipalInternal(callerText)) {
+      case (?u) { u };
+      case (null) { Runtime.trap("Unauthorized: User not found"); };
+    };
+
+    switch (adminUser.role) {
+      case (#Admin) { };
+      case (#Manager) {
+        let perms = switch (adminUser.permissions) {
+          case (?p) { p };
+          case (null) { Runtime.trap("Access denied: insufficient department permission."); };
+        };
+        if (not perms.canManageStaff) {
+          Runtime.trap("Access denied: insufficient department permission.");
+        };
+      };
+      case (#Staff) {
+        Runtime.trap("Access denied: staff cannot unlink identities.");
+      };
+    };
+
+    var targetKey : ?Text = null;
+    var targetUser : ?User = null;
+
+    if (users.containsKey(targetPrincipalText)) {
+      targetKey := ?targetPrincipalText;
+      targetUser := users.get(targetPrincipalText);
+    } else {
+      for (entry in users.entries()) {
+        let (k, u) = entry;
+        if (u.username == Text.toLower(trimWhitespace(targetPrincipalText))) {
+          targetKey := ?k;
+          targetUser := ?u;
+        };
+      };
+    };
+
+    let userObj = switch (targetUser) {
+      case (?u) { u };
+      case (null) { Runtime.trap("User not found: " # targetPrincipalText); };
+    };
+    let resolvedKey = switch (targetKey) {
+      case (?k) { k };
+      case (null) { Principal.toText(userObj.principalId); };
+    };
+
+    let currentIdentities = switch (userObj.linkedIdentities) {
+      case (?ids) { ids };
+      case (null) { [] };
+    };
+
+    var filtered : [LinkedIdentity] = [];
+    for (id in currentIdentities.vals()) {
+      if (id.providerId != providerId) {
+        filtered := Array.append<LinkedIdentity>(filtered, [id]);
+      };
+    };
+
+    let updatedUser : User = {
+      userObj with
+      linkedIdentities = ?filtered;
+    };
+
+    users.add(resolvedKey, updatedUser);
+    logActivity(caller, "Unlink Identity", "Unlinked identity " # providerId # " from user " # userObj.name);
+    createAuditLogInternal(callerText, "Identity Unlinked", "Unlinked identity " # providerId # " from user " # userObj.username);
+
+    "Identity unlinked successfully";
+  };
+
   public shared ({ caller }) func adminResetPassword(
     principalText : Text,
     newPrincipalId : Text,
@@ -1737,18 +1977,18 @@ actor {
   };
 
   public query ({ caller }) func getUsers() : async [User] {
-    let user = checkPermissions(caller, [#AdminSettings], "canManageStaff");
+    let user = checkPermissions(caller, [#AdminSettings], #canManageStaff);
     users.values().toArray();
   };
 
   public query ({ caller }) func getActivityLogs() : async [ActivityLog] {
-    let user = checkPermissions(caller, [#AdminSettings], "canViewLogs");
+    let user = checkPermissions(caller, [#AdminSettings], #canViewLogs);
     List.toArray<ActivityLog>(activityLogs);
   };
 
   // Invoice Operations
   public query ({ caller }) func getNextInvoiceNumber() : async Text {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
     let nextId = lastInvoiceId + 1;
     "INV-" # nextId.toText();
   };
@@ -1760,7 +2000,7 @@ actor {
     totalAmount : Float,
     paidAmount : Float,
   ) : async Text {
-    let user = checkPermissions(caller, [#Sales], "canCreate");
+    let user = checkPermissions(caller, [#Sales], #canCreate);
     let callerText = Principal.toText(caller);
 
     let id = lastInvoiceId + 1;
@@ -1853,7 +2093,7 @@ actor {
   };
 
   public query ({ caller }) func getInvoices() : async [Invoice] {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
 
     let invoiceValues = invoices.values().toArray();
     let sortedInvoices = invoiceValues.sort(
@@ -1871,7 +2111,7 @@ actor {
   };
 
   public query ({ caller }) func getInvoiceById(id : Nat) : async Invoice {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
 
     switch (invoices.get(id)) {
       case (?internalInvoice) {
@@ -1887,7 +2127,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteInvoice(id : Nat) : async () {
-    let user = checkPermissions(caller, [#Sales], "canDelete");
+    let user = checkPermissions(caller, [#Sales], #canDelete);
     let callerText = Principal.toText(caller);
 
     switch (invoices.get(id)) {
@@ -1955,7 +2195,7 @@ actor {
     totalAmount : Float,
     paidAmount : Float,
   ) : async () {
-    let user = checkPermissions(caller, [#Sales], "canEdit");
+    let user = checkPermissions(caller, [#Sales], #canEdit);
     let callerText = Principal.toText(caller);
 
     switch (invoices.get(id)) {
@@ -2096,7 +2336,7 @@ actor {
 
   // Product Operations
   public query ({ caller }) func getProducts() : async [ProductItem] {
-    let user = checkPermissions(caller, [#Inventory, #Sales, #Production, #Finance], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Sales, #Production, #Finance], #canView);
     productsList.values().toArray();
   };
 
@@ -2106,7 +2346,7 @@ actor {
       case (?p) { p.stock };
       case (null) { 0 };
     };
-    let requiredToggle = if (oldStock != stock) { "canAdjustStock" } else { "canEdit" };
+    let requiredToggle : PermissionKey = if (oldStock != stock) { #canAdjustStock } else { #canEdit };
     let user = checkPermissions(caller, [#Inventory, #Production, #Finance], requiredToggle);
     let product : ProductItem = {
       id;
@@ -2133,7 +2373,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteProduct(id : Text) : async () {
-    let user = checkPermissions(caller, [#Inventory], "canDelete");
+    let user = checkPermissions(caller, [#Inventory], #canDelete);
     let callerText = Principal.toText(caller);
     switch (productsList.get(id)) {
       case (?prod) {
@@ -2149,12 +2389,12 @@ actor {
 
   // Customer Operations
   public query ({ caller }) func getCustomers() : async [CustomerItem] {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
     customersList.values().toArray();
   };
 
   public shared ({ caller }) func saveCustomer(id : Text, name : Text, businessAddress : Text, phone : Text, gstNo : Text) : async () {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canCreate");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canCreate);
     let customer : CustomerItem = {
       id;
       name;
@@ -2170,7 +2410,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteCustomer(id : Text) : async () {
-    let user = checkPermissions(caller, [#Sales], "canDelete");
+    let user = checkPermissions(caller, [#Sales], #canDelete);
     switch (customersList.get(id)) {
       case (?cust) {
         customersList.remove(id);
@@ -2195,7 +2435,7 @@ actor {
     sidebarStyle : ?Text,
     allowAdminBackupRestore : ?Bool
   ) : async () {
-    let user = checkPermissions(caller, [#AdminSettings], "canEdit");
+    let user = checkPermissions(caller, [#AdminSettings], #canEdit);
     let callerText = Principal.toText(caller);
 
     settings := ?{
@@ -2241,7 +2481,7 @@ actor {
   };
 
   public query ({ caller }) func getDashboardStats() : async DashboardStats {
-    let user = checkPermissions(caller, [#Sales, #Finance, #Purchase, #Inventory], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance, #Purchase, #Inventory], #canView);
 
     let allInvoices = invoices.values().toArray();
 
@@ -2395,7 +2635,7 @@ actor {
   };
 
   public shared ({ caller }) func collectPayment(customerId : Text, amount : Float, notes : Text) : async () {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canCreate");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canCreate);
     let callerText = Principal.toText(caller);
 
     var remaining = amount;
@@ -2454,19 +2694,19 @@ actor {
   };
 
   public query ({ caller }) func getPayments() : async [Payment] {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
     paymentsList.values().toArray();
   };
 
   public query ({ caller }) func getPaymentsByCustomer(customerId : Text) : async [Payment] {
-    let user = checkPermissions(caller, [#Sales, #Finance], "canView");
+    let user = checkPermissions(caller, [#Sales, #Finance], #canView);
     let allPayments = paymentsList.values().toArray();
     allPayments.filter(func(p) { p.customerId == customerId });
   };
 
   // Raw Material endpoints
   public query ({ caller }) func getRawMaterials() : async [RawMaterial] {
-    let user = checkPermissions(caller, [#Inventory, #Purchase, #Production, #Finance], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Purchase, #Production, #Finance], #canView);
     rawMaterialsList.values().toArray();
   };
 
@@ -2495,7 +2735,7 @@ actor {
     };
     let currentStock = openingStock + purchased - consumed;
 
-    let requiredToggle = if (oldStock != currentStock) { "canAdjustStock" } else { "canEdit" };
+    let requiredToggle : PermissionKey = if (oldStock != currentStock) { #canAdjustStock } else { #canEdit };
     let user = checkPermissions(caller, [#Inventory, #Purchase], requiredToggle);
 
     let material : RawMaterial = {
@@ -2520,7 +2760,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteRawMaterial(id : Text) : async () {
-    let user = checkPermissions(caller, [#Inventory], "canDelete");
+    let user = checkPermissions(caller, [#Inventory], #canDelete);
     let callerText = Principal.toText(caller);
     switch (rawMaterialsList.get(id)) {
       case (?m) {
@@ -2535,7 +2775,7 @@ actor {
 
   // Purchase endpoints
   public query ({ caller }) func getPurchases() : async [Purchase] {
-    let user = checkPermissions(caller, [#Purchase, #Finance], "canView");
+    let user = checkPermissions(caller, [#Purchase, #Finance], #canView);
     purchasesList.values().toArray();
   };
 
@@ -2549,7 +2789,7 @@ actor {
     totalAmount : Float,
     paidAmount : Float,
   ) : async Text {
-    let user = checkPermissions(caller, [#Purchase], "canCreate");
+    let user = checkPermissions(caller, [#Purchase], #canCreate);
     let callerText = Principal.toText(caller);
 
     let id = lastPurchaseId + 1;
@@ -2605,7 +2845,7 @@ actor {
   };
 
   public shared ({ caller }) func deletePurchase(id : Nat) : async () {
-    let user = checkPermissions(caller, [#Purchase], "canDelete");
+    let user = checkPermissions(caller, [#Purchase], #canDelete);
     let callerText = Principal.toText(caller);
 
     switch (purchasesList.get(id)) {
@@ -2636,7 +2876,7 @@ actor {
 
   // Expenses endpoints
   public shared ({ caller }) func saveExpense(category : Text, amount : Float, description : Text) : async Nat {
-    let user = checkPermissions(caller, [#Finance], "canCreate");
+    let user = checkPermissions(caller, [#Finance], #canCreate);
     let callerText = Principal.toText(caller);
 
     let id = lastExpenseId + 1;
@@ -2656,12 +2896,12 @@ actor {
   };
 
   public query ({ caller }) func getExpenses() : async [Expense] {
-    let user = checkPermissions(caller, [#Finance], "canView");
+    let user = checkPermissions(caller, [#Finance], #canView);
     expensesList.values().toArray();
   };
 
   public shared ({ caller }) func deleteExpense(id : Nat) : async () {
-    let user = checkPermissions(caller, [#Finance], "canDelete");
+    let user = checkPermissions(caller, [#Finance], #canDelete);
     let callerText = Principal.toText(caller);
 
     switch (expensesList.get(id)) {
@@ -2677,7 +2917,7 @@ actor {
 
   // Vendor payment endpoints
   public shared ({ caller }) func collectVendorPayment(vendorName : Text, amount : Float, notes : Text) : async () {
-    let user = checkPermissions(caller, [#Purchase, #Finance], "canCreate");
+    let user = checkPermissions(caller, [#Purchase, #Finance], #canCreate);
     let callerText = Principal.toText(caller);
 
     var remaining = amount;
@@ -2735,19 +2975,19 @@ actor {
   };
 
   public query ({ caller }) func getVendorPayments() : async [VendorPayment] {
-    let user = checkPermissions(caller, [#Purchase, #Finance], "canView");
+    let user = checkPermissions(caller, [#Purchase, #Finance], #canView);
     vendorPaymentsList.values().toArray();
   };
 
   public query ({ caller }) func getMaterialConsumptionHistory() : async [MaterialConsumptionEntry] {
-    let user = checkPermissions(caller, [#Inventory, #Production, #Finance], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Production, #Finance], #canView);
     List.toArray<MaterialConsumptionEntry>(consumptionHistory);
   };
 
   // --- Employee Work & Production System ---
 
   public query ({ caller }) func getEmployees() : async [Employee] {
-    let user = checkPermissions(caller, [#Production], "canView");
+    let user = checkPermissions(caller, [#Production], #canView);
     employeesList.values().toArray();
   };
 
@@ -2760,7 +3000,7 @@ actor {
     skillType : Text,
     status : Text
   ) : async Text {
-    let user = checkPermissions(caller, [#Production], "canCreate");
+    let user = checkPermissions(caller, [#Production], #canCreate);
     let callerText = Principal.toText(caller);
 
     let emp : Employee = {
@@ -2782,7 +3022,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteEmployee(id : Text) : async () {
-    let user = checkPermissions(caller, [#Production], "canDelete");
+    let user = checkPermissions(caller, [#Production], #canDelete);
     let callerText = Principal.toText(caller);
 
     switch (employeesList.get(id)) {
@@ -2808,11 +3048,11 @@ actor {
     switch (callerUser.role) {
       case (#Admin) { allJobs };
       case (#Manager) {
-        let user = checkPermissions(caller, [#Production], "canView");
+        let user = checkPermissions(caller, [#Production], #canView);
         allJobs;
       };
       case (#Staff) {
-        let user = checkPermissions(caller, [#Staff], "canView");
+        let user = checkPermissions(caller, [#Staff], #canView);
         allJobs.filter(func(j) { j.employeeName == user.name });
       };
     };
@@ -2831,7 +3071,7 @@ actor {
     remarks : Text,
     customerOrderLink : ?CustomerOrderLink
   ) : async Nat {
-    let user = checkPermissions(caller, [#Production], "canCreate");
+    let user = checkPermissions(caller, [#Production], #canCreate);
     let callerText = Principal.toText(caller);
     let roleText = switch (user.role) {
       case (#Admin) { "Master Admin" };
@@ -2929,7 +3169,7 @@ actor {
     };
 
     if (user.role == #Staff) {
-      let u = checkPermissions(caller, [#Staff], "canCreate");
+      let u = checkPermissions(caller, [#Staff], #canCreate);
       let allowed = switch (settings) {
         case (?s) { s.allowStaffCollection };
         case (null) { true };
@@ -2944,7 +3184,7 @@ actor {
         Runtime.trap("Access denied: insufficient department permission.");
       };
     } else {
-      let u = checkPermissions(caller, [#Production], "canCreate");
+      let u = checkPermissions(caller, [#Production], #canCreate);
     };
 
     if (todayCollectedQty <= 0.0) {
@@ -3268,7 +3508,7 @@ actor {
     rejectedQty : Float,
     remarks : Text
   ) : async () {
-    let user = checkPermissions(caller, [#Production], "canEdit");
+    let user = checkPermissions(caller, [#Production], #canEdit);
     let callerText = Principal.toText(caller);
 
     let col = switch (collectionsList.get(collectionId)) {
@@ -3598,7 +3838,7 @@ actor {
   public shared ({ caller }) func deleteCollectionEntry(
     collectionId : Nat
   ) : async () {
-    let user = checkPermissions(caller, [#Production], "canDelete");
+    let user = checkPermissions(caller, [#Production], #canDelete);
     let callerText = Principal.toText(caller);
 
     let col = switch (collectionsList.get(collectionId)) {
@@ -3910,23 +4150,23 @@ actor {
     switch (callerUser.role) {
       case (#Admin) { migratedCols };
       case (#Manager) {
-        let user = checkPermissions(caller, [#Production], "canView");
+        let user = checkPermissions(caller, [#Production], #canView);
         migratedCols;
       };
       case (#Staff) {
-        let user = checkPermissions(caller, [#Staff], "canView");
+        let user = checkPermissions(caller, [#Staff], #canView);
         migratedCols.filter(func(c) { c.karigarName == user.name });
       };
     };
   };
 
   public query ({ caller }) func getStockMovementHistory() : async [StockMovement] {
-    let user = checkPermissions(caller, [#Inventory], "canView");
+    let user = checkPermissions(caller, [#Inventory], #canView);
     stockMovementsList.values().toArray();
   };
 
   public query ({ caller }) func getSystemAuditLogs() : async [AuditLog] {
-    let user = checkPermissions(caller, [#AdminSettings], "canViewLogs");
+    let user = checkPermissions(caller, [#AdminSettings], #canViewLogs);
     auditLogsList.values().toArray();
   };
 
@@ -3940,10 +4180,10 @@ actor {
     switch (callerUser.role) {
       case (#Admin) {};
       case (#Manager) {
-        let user = checkPermissions(caller, [#Production, #Finance], "canView");
+        let user = checkPermissions(caller, [#Production, #Finance], #canView);
       };
       case (#Staff) {
-        let user = checkPermissions(caller, [#Staff], "canView");
+        let user = checkPermissions(caller, [#Staff], #canView);
         if (employeeName != user.name) {
           createAuditLogInternal(callerText, "Staff Access Blocked", "Staff " # user.name # " tried viewing ledger of " # employeeName);
           Runtime.trap("Access denied: insufficient department permission.");
@@ -3975,7 +4215,7 @@ actor {
   };
 
   public query ({ caller }) func getEmployeePayments() : async [EmployeePayment] {
-    let user = checkPermissions(caller, [#Production, #Finance], "canView");
+    let user = checkPermissions(caller, [#Production, #Finance], #canView);
     employeePaymentsList.values().toArray();
   };
 
@@ -3985,7 +4225,7 @@ actor {
     paymentMode : Text,
     note : Text
   ) : async Nat {
-    let user = checkPermissions(caller, [#Production, #Finance], "canCreate");
+    let user = checkPermissions(caller, [#Production, #Finance], #canCreate);
     let callerText = Principal.toText(caller);
 
     let id = lastEmployeePaymentId + 1;
@@ -4042,7 +4282,7 @@ actor {
     paymentMode : Text,
     note : Text
   ) : async () {
-    let user = checkPermissions(caller, [#Production, #Finance], "canEdit");
+    let user = checkPermissions(caller, [#Production, #Finance], #canEdit);
     let callerText = Principal.toText(caller);
 
     switch (employeePaymentsList.get(paymentId)) {
@@ -4095,7 +4335,7 @@ actor {
   public shared ({ caller }) func deleteEmployeePayment(
     paymentId : Nat
   ) : async () {
-    let user = checkPermissions(caller, [#Production, #Finance], "canDelete");
+    let user = checkPermissions(caller, [#Production, #Finance], #canDelete);
     let callerText = Principal.toText(caller);
 
     switch (employeePaymentsList.get(paymentId)) {
@@ -4142,7 +4382,7 @@ actor {
   };
 
   public query ({ caller }) func checkStockReconciliation() : async [StockReconciliationItem] {
-    let user = checkPermissions(caller, [#Inventory, #Finance], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Finance], #canView);
     let callerText = Principal.toText(caller);
 
     var report : [StockReconciliationItem] = [];
@@ -4222,7 +4462,7 @@ actor {
   };
 
   public shared ({ caller }) func runConsistencyAuditAndRepair() : async [Text] {
-    let user = checkPermissions(caller, [#Inventory, #Production, #Finance], "canEdit");
+    let user = checkPermissions(caller, [#Inventory, #Production, #Finance], #canEdit);
     let callerText = Principal.toText(caller);
     
     var report : [Text] = [];
@@ -4471,7 +4711,7 @@ actor {
   };
 
   public shared ({ caller }) func recalculateProductionReports() : async () {
-    let user = checkPermissions(caller, [#Production], "canEdit");
+    let user = checkPermissions(caller, [#Production], #canEdit);
     let callerText = Principal.toText(caller);
     createAuditLogInternal(callerText, "REPORTS_RECALCULATED", "Global production reports recalculated successfully.");
   };
@@ -4486,10 +4726,10 @@ actor {
     switch (callerUser.role) {
       case (#Admin) {};
       case (#Manager) {
-        let user = checkPermissions(caller, [#Production], "canView");
+        let user = checkPermissions(caller, [#Production], #canView);
       };
       case (#Staff) {
-        let user = checkPermissions(caller, [#Staff], "canView");
+        let user = checkPermissions(caller, [#Staff], #canView);
       };
     };
 
@@ -4569,7 +4809,7 @@ actor {
 
   // Consumption Log endpoints
   public query ({ caller }) func getConsumptionLogs() : async [ConsumptionLog] {
-    let user = checkPermissions(caller, [#Inventory, #Production], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Production], #canView);
     consumptionLogsList.values().toArray();
   };
 
@@ -4584,7 +4824,7 @@ actor {
     jobWorkNo : Text,
     remarks : Text
   ) : async Nat {
-    let user = checkPermissions(caller, [#Inventory, #Production], "canCreate");
+    let user = checkPermissions(caller, [#Inventory, #Production], #canCreate);
     let callerText = Principal.toText(caller);
 
     let id = lastConsumptionLogId + 1;
@@ -4657,7 +4897,7 @@ actor {
   };
 
   public query ({ caller }) func getFinishedGoodsLogs() : async [FinishedGoodsLog] {
-    let user = checkPermissions(caller, [#Inventory, #Production], "canView");
+    let user = checkPermissions(caller, [#Inventory, #Production], #canView);
     finishedGoodsLogsList.values().toArray();
   };
 
@@ -4667,7 +4907,7 @@ actor {
     logType : Text,
     reason : Text
   ) : async Nat {
-    let user = checkPermissions(caller, [#Inventory, #Production], "canCreate");
+    let user = checkPermissions(caller, [#Inventory, #Production], #canCreate);
     let callerText = Principal.toText(caller);
 
     if (logType == "Produced" or logType == "Returned") {
@@ -4697,7 +4937,7 @@ actor {
   };
 
   public query ({ caller }) func exportDatabase() : async DatabaseBackup {
-    let user = checkPermissions(caller, [#AdminSettings], "canBackupRestore");
+    let user = checkPermissions(caller, [#AdminSettings], #canBackupRestore);
     let callerText = Principal.toText(caller);
 
     let allowed = switch (user.role) {
@@ -4800,7 +5040,7 @@ actor {
   };
 
   public shared ({ caller }) func importDatabase(backup : DatabaseBackup) : async () {
-    let user = checkPermissions(caller, [#AdminSettings], "canBackupRestore");
+    let user = checkPermissions(caller, [#AdminSettings], #canBackupRestore);
     let callerText = Principal.toText(caller);
 
     let allowed = switch (user.role) {

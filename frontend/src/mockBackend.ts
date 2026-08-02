@@ -1,4 +1,4 @@
-import { type backendInterface, type Settings, type Invoice, type CustomerInfo, type Product, type DashboardStats, type User, type ActivityLog, type ProductItem, type CustomerItem, type Payment, type RawMaterial, type PurchaseItem, type Purchase, type Expense, type VendorPayment, type MaterialConsumptionEntry, type BOMRequirement, type Department, type Permissions, type SalesOrder, type ProductionRequirement, type PurchaseRequirement, type MRPRecord, type MRPMaterialRequirement, type PurchaseOrder, type GRN } from './backend';
+import { type backendInterface, type Settings, type Invoice, type CustomerInfo, type Product, type DashboardStats, type User, type LinkedIdentity, type IdentityProviderType, type ActivityLog, type ProductItem, type CustomerItem, type Payment, type RawMaterial, type PurchaseItem, type Purchase, type Expense, type VendorPayment, type MaterialConsumptionEntry, type BOMRequirement, type Department, type Permissions, type SalesOrder, type ProductionRequirement, type PurchaseRequirement, type MRPRecord, type MRPMaterialRequirement, type PurchaseOrder, type GRN } from './backend';
 import { normalizeUsername, normalizeEmail, normalizeMobile, createPasswordHash, findUserByRecoveryIdentity, deduplicateUsers } from './utils/passwordAuth';
 import { runBOMMigration } from './utils/bomMigrations';
 import { runVendorMigration, runRawMaterialMetadataMigration } from './utils/masterData';
@@ -32,8 +32,7 @@ export class MockBackend implements backendInterface {
                 let updated = false;
                 users = users.map((u: any) => {
                     if (u.username === 'admin') {
-                        if (u.name !== 'Vatsal Dholariya' || !u.role || !('Admin' in u.role)) {
-                            u.name = 'Vatsal Dholariya';
+                        if (!u.role || !('Admin' in u.role)) {
                             u.role = { Admin: null };
                             updated = true;
                         }
@@ -192,7 +191,7 @@ export class MockBackend implements backendInterface {
         if (master.status !== 'Active') {
             return { isValid: false, message: `CRITICAL SECURITY BREACH: Master Admin account (${master.name}) is deactivated or disabled!` };
         }
-        if (master.name !== 'Vatsal Dholariya' || master.username !== 'admin') {
+        if (master.username !== 'admin') {
             return { isValid: false, message: "CRITICAL SECURITY BREACH: Master Admin identity mismatch! Unauthorized user holds Master Admin privileges." };
         }
         return { isValid: true, message: "Master Admin integrity is intact." };
@@ -749,7 +748,29 @@ export class MockBackend implements backendInterface {
 
     private getCurrentUserRaw(): any {
         const stored = localStorage.getItem('user_session') || sessionStorage.getItem('user_session') || localStorage.getItem('mock_current_user');
-        return stored ? JSON.parse(stored) : null;
+        if (!stored) return null;
+        try {
+            const current = JSON.parse(stored);
+            if (current) {
+                const users = this.getUsersRaw();
+                let dbUser = current.username ? users.find((u: any) => u.username && u.username.toLowerCase() === current.username.toLowerCase()) : null;
+                if (!dbUser && current.principalId) {
+                    dbUser = users.find((u: any) => {
+                        if (u.principalId === current.principalId) return true;
+                        if (u.linkedIdentities) {
+                            return u.linkedIdentities.some((id: any) => id.providerId === current.principalId);
+                        }
+                        return false;
+                    });
+                }
+                if (dbUser) {
+                    return dbUser;
+                }
+            }
+            return current;
+        } catch (e) {
+            return null;
+        }
     }
 
     private getRoleText(roleObj: any): string {
@@ -794,7 +815,12 @@ export class MockBackend implements backendInterface {
             status: item.status || 'Active',
             lastLogin: item.lastLogin || '',
             passwordHash: item.passwordHash || '',
-            needsPasswordChange: item.needsPasswordChange || false
+            needsPasswordChange: item.needsPasswordChange || false,
+            linkedIdentities: item.linkedIdentities ? item.linkedIdentities.map((id: any) => ({
+                providerType: id.providerType,
+                providerId: id.providerId,
+                linkedAt: typeof id.linkedAt === 'bigint' ? id.linkedAt : BigInt(id.linkedAt || Date.now()) * 1000000n
+            })) : []
         };
     }
 
@@ -802,14 +828,22 @@ export class MockBackend implements backendInterface {
         let current = this.getCurrentUserRaw();
         if (current) {
             const users = this.getUsersRaw();
-            const dbUser = users.find(u => u.username.toLowerCase() === current.username.toLowerCase());
+            let dbUser = users.find(u => u.username.toLowerCase() === current.username.toLowerCase());
             
+            if (!dbUser) {
+                // Look up by primary principalId or linkedIdentities
+                dbUser = users.find(u => {
+                    if (u.principalId === current.principalId) return true;
+                    if (u.linkedIdentities) {
+                        return u.linkedIdentities.some((id: any) => id.providerId === current.principalId);
+                    }
+                    return false;
+                });
+            }
+
             let reason = 'success';
             if (!dbUser) {
                 reason = 'user_not_found';
-            } else if (dbUser.principalId !== current.principalId) {
-                // Do not require principalId to change or match in mock mode for password-based logins
-                // reason = 'principal_mismatch';
             } else if (dbUser.status === 'Deactivated' || dbUser.status === 'Disabled') {
                 reason = 'user_deactivated';
             }
@@ -832,6 +866,100 @@ export class MockBackend implements backendInterface {
             return this.mapToUser(dbUser!);
         }
         return null;
+    }
+
+    async linkIdentityToUser(
+        targetPrincipalText: string,
+        providerTypeVariant: IdentityProviderType,
+        providerId: string
+    ): Promise<string> {
+        const caller = this.getCurrentUserRaw();
+        if (!caller || !caller.role) {
+            throw new Error("Access denied: insufficient permission.");
+        }
+        if ('Staff' in caller.role) {
+            throw new Error("Access denied: staff cannot link identities.");
+        }
+        if ('Manager' in caller.role) {
+            const perms = caller.permissions;
+            if (!perms || !perms.canManageStaff) {
+                throw new Error("Access denied: insufficient permission.");
+            }
+        }
+
+        const users = this.getUsersRaw();
+
+        // Requirement 5: Prevent duplicate ERP user records
+        const isAlreadyPrimary = users.some(u => u.principalId === providerId);
+        const isAlreadyLinked = users.some(u => 
+            u.linkedIdentities && u.linkedIdentities.some((id: any) => id.providerId === providerId)
+        );
+
+        if (isAlreadyPrimary || isAlreadyLinked) {
+            throw new Error("Identity is already linked to another ERP user account.");
+        }
+
+        const targetUser = users.find(u => 
+            u.principalId === targetPrincipalText || 
+            u.username.toLowerCase() === targetPrincipalText.toLowerCase()
+        );
+
+        if (!targetUser) {
+            throw new Error(`User not found: ${targetPrincipalText}`);
+        }
+
+        if (!targetUser.linkedIdentities) {
+            targetUser.linkedIdentities = [];
+        }
+
+        targetUser.linkedIdentities.push({
+            providerType: providerTypeVariant,
+            providerId,
+            linkedAt: Date.now()
+        });
+
+        localStorage.setItem('mock_users', JSON.stringify(users));
+        this.mockLogAudit(caller.name, "Identity Linked", `Linked identity ${providerId} to user ${targetUser.username}`);
+
+        return "Identity linked successfully";
+    }
+
+    async unlinkIdentityFromUser(
+        targetPrincipalText: string,
+        providerId: string
+    ): Promise<string> {
+        const caller = this.getCurrentUserRaw();
+        if (!caller || !caller.role) {
+            throw new Error("Access denied: insufficient permission.");
+        }
+        if ('Staff' in caller.role) {
+            throw new Error("Access denied: staff cannot unlink identities.");
+        }
+        if ('Manager' in caller.role) {
+            const perms = caller.permissions;
+            if (!perms || !perms.canManageStaff) {
+                throw new Error("Access denied: insufficient permission.");
+            }
+        }
+
+        const users = this.getUsersRaw();
+        const targetUser = users.find(u => 
+            u.principalId === targetPrincipalText || 
+            u.username.toLowerCase() === targetPrincipalText.toLowerCase()
+        );
+
+        if (!targetUser) {
+            throw new Error(`User not found: ${targetPrincipalText}`);
+        }
+
+        if (targetUser.linkedIdentities) {
+            targetUser.linkedIdentities = targetUser.linkedIdentities.filter((id: any) => id.providerId !== providerId);
+        }
+
+        localStorage.setItem('mock_users', JSON.stringify(users));
+        this.mockLogAudit(caller.name, "Identity Unlinked", `Unlinked identity ${providerId} from user ${targetUser.username}`);
+
+        return "Identity unlinked successfully";
     }
 
     async createUser(
@@ -998,9 +1126,6 @@ export class MockBackend implements backendInterface {
             } else if (status !== 'Active') {
                 modificationAttempted = true;
                 actionAttempted = `Deactivate account`;
-            } else if (name.trim() !== 'Vatsal Dholariya') {
-                modificationAttempted = true;
-                actionAttempted = "Rename account";
             } else if (username.trim().toLowerCase() !== 'admin') {
                 modificationAttempted = true;
                 actionAttempted = "Change username";

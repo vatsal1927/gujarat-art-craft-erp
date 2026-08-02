@@ -1197,7 +1197,7 @@ const Dashboard = () => {
               <Badge className="bg-green-600 hover:bg-green-700 text-white text-[10px] py-0 px-1.5 h-4 border-none">Maximum Security</Badge>
             </h3>
             <p className="text-[11px] text-green-700 dark:text-green-400/80 mt-0.5">
-              Master Admin: <span className="font-bold">Vatsal Dholariya</span>
+              User: <span className="font-bold">{user?.name || 'Master Admin'}</span>
             </p>
           </div>
         </div>

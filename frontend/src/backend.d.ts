@@ -82,6 +82,16 @@ export interface Permissions {
     "whatsapp.manageAutomation"?: boolean;
 }
 
+export type IdentityProviderType =
+  | { InternetIdentity: null }
+  | { Future: string };
+
+export interface LinkedIdentity {
+    providerType: IdentityProviderType;
+    providerId: string;
+    linkedAt: Time;
+}
+
 export interface User {
     principalId: Principal;
     name: string;
@@ -98,6 +108,7 @@ export interface User {
     needsPasswordChange?: boolean;
     department?: Department;
     permissions?: Permissions;
+    linkedIdentities?: LinkedIdentity[];
 }
 
 export interface ActivityLog {
@@ -502,6 +513,8 @@ export interface backendInterface {
     changePassword(newPassword: string, newPrincipalId: string): Promise<void>;
     toggleUserStatus(principalText: string, status: string): Promise<void>;
     adminResetPassword(principalText: string, newPrincipalId: string, newPasswordHash?: string): Promise<void>;
+    linkIdentityToUser(targetPrincipalText: string, providerTypeVariant: IdentityProviderType, providerId: string): Promise<string>;
+    unlinkIdentityFromUser(targetPrincipalText: string, providerId: string): Promise<string>;
     getProducts(): Promise<Array<ProductItem>>;
     saveProduct(id: string, vigat: string, rate: number, hsnCode: string, stock: bigint, productionCost: number, bom: Array<BOMRequirement>): Promise<void>;
     deleteProduct(id: string): Promise<void>;

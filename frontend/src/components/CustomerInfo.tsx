@@ -169,7 +169,17 @@ const CustomerInfo = ({
         </div>
       )}
       
-      <div className="border-t border-[#D4A017]/30 pt-4 mt-4">
+      <div className="border-t border-[#D4A017]/30 pt-4 mt-4 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="customerBusinessAddress" className="text-[#7A0019] font-semibold">Business Address</Label>
+          <Input
+            id="customerBusinessAddress"
+            value={customerBusinessAddress}
+            onChange={(e) => onCustomerBusinessAddressChange(e.target.value)}
+            placeholder="e.g. A-21, Madhavpura Market, Ahmedabad"
+            className="border-[#D4A017] focus:ring-[#7A0019] focus-visible:ring-[#7A0019] h-9"
+          />
+        </div>
         <div className="space-y-2">
           <Label htmlFor="transport" className="text-[#7A0019] font-semibold">Transport / Dispatch Via</Label>
           <Input

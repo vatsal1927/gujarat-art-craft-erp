@@ -358,8 +358,8 @@ export default function UserManagement() {
 
     const isEditingMasterAdmin = !!(editingUser?.role && 'Admin' in editingUser.role);
     if (isEditingMasterAdmin) {
-      if (editRole !== 'Admin' || editStatus !== 'Active' || editName.trim() !== 'Vatsal Dholariya' || editUsername.trim().toLowerCase() !== 'admin') {
-        toast.error('Security Policy Violation: Master Admin cannot be modified.');
+      if (editRole !== 'Admin' || editStatus !== 'Active' || editUsername.trim().toLowerCase() !== 'admin') {
+        toast.error('Security Policy Violation: Master Admin role and status cannot be modified.');
         return;
       }
     } else {

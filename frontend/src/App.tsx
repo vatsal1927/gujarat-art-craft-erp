@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createRouter, createRootRoute, createRoute, Outlet, useLocation, useNavigate, Navigate } from '@tanstack/react-router';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthGuard, useAuth } from './components/AuthGuard';
@@ -53,15 +52,6 @@ import StockAlerts from './pages/StockAlerts';
 import CashBook from './pages/CashBook';
 import BankBook from './pages/BankBook';
 
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: true,
-      staleTime: 30000,
-    },
-  },
-});
 
 // Layout component with Navigation
 function Layout() {
@@ -617,9 +607,7 @@ declare module '@tanstack/react-router' {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <RouterProvider router={router} />
   );
 }
 
