@@ -10,3 +10,4 @@ export * from './ExpenseRepository';
 export * from './InventoryRepository';
 export * from './ProductionRepository';
 export * from './VendorRepository';
+export * from './base/repositoryRunner';

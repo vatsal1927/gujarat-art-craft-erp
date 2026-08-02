@@ -1,8 +1,14 @@
 import type { backendInterface, Settings } from '../backend';
+import { executeRepository, executeRepositoryResult } from './base/repositoryRunner';
+import type { ApiResult } from '../utils/apiResult';
 
 export class SettingsRepository {
   static async getSettings(actor: backendInterface): Promise<Settings> {
-    return actor.getSettings();
+    return executeRepository('Settings', 'getSettings', actor, () => actor.getSettings());
+  }
+
+  static async getSettingsResult(actor: backendInterface): Promise<ApiResult<Settings>> {
+    return executeRepositoryResult('Settings', 'getSettings', actor, () => actor.getSettings());
   }
 
   static async saveSettings(
@@ -23,20 +29,22 @@ export class SettingsRepository {
       lowStockAlertThreshold?: number;
     }
   ): Promise<void> {
-    return actor.saveSettings(
-      data.businessInfo,
-      data.defaultGstRate,
-      data.termsAndConditions,
-      data.allowStaffCollection,
-      data.enableRejectedWage,
-      data.companyLogo,
-      data.companyName,
-      data.themeColors,
-      data.sidebarStyle,
-      data.allowAdminBackupRestore,
-      data.enableAutoStockAlerts,
-      data.alertFrequency,
-      data.lowStockAlertThreshold
+    return executeRepository('Settings', 'saveSettings', actor, () =>
+      actor.saveSettings(
+        data.businessInfo,
+        data.defaultGstRate,
+        data.termsAndConditions,
+        data.allowStaffCollection,
+        data.enableRejectedWage,
+        data.companyLogo,
+        data.companyName,
+        data.themeColors,
+        data.sidebarStyle,
+        data.allowAdminBackupRestore,
+        data.enableAutoStockAlerts,
+        data.alertFrequency,
+        data.lowStockAlertThreshold
+      )
     );
   }
 }
