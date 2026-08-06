@@ -52,6 +52,8 @@ import {
 import { useAuth } from '../components/AuthGuard';
 import { hasDeptAccess, getRoleName } from '../utils/auth';
 
+import { SkeletonDashboard, ErrorState } from '@/components/ui/states';
+
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -92,7 +94,7 @@ const Dashboard = () => {
   const canViewLedger = isAnyStaff || isMasterAdmin || isManager || !!(user && hasDeptAccess(user, ['Production', 'Finance']));
 
   // Queries
-  const { data: stats, isLoading: statsLoading } = useDashboardStats({ enabled: canViewStats && !!user });
+  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErrorObj, refetch: refetchStats } = useDashboardStats({ enabled: canViewStats && !!user });
   const { data: prodStats, isLoading: prodLoading } = useEmployeeDashboard({ enabled: canViewEmpDashboard && !!user });
   const { data: invoices = [] } = useInvoices({ enabled: canViewInvoices && !!user });
   const { data: purchases = [] } = usePurchases({ enabled: canViewPurchases && !!user });
@@ -121,21 +123,18 @@ const Dashboard = () => {
   const defaultTab = canViewInvoices ? 'invoices' : (canViewPurchases ? 'purchases' : (canViewCollections ? 'collections' : 'invoices'));
 
   if (isLoading) {
+    return <SkeletonDashboard />;
+  }
+
+  if (statsError && canViewStats) {
     return (
-      <div className="space-y-6 animate-pulse">
-        <h1 className="text-3xl font-bold text-maroon">Loading ERP Dashboard...</h1>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <Card key={i} className="border-2 border-gold/10">
-              <CardHeader>
-                <Skeleton className="h-4 w-32" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-24" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="py-12 flex justify-center">
+        <ErrorState
+          title="Unable to Load Dashboard Analytics"
+          error={statsErrorObj}
+          onRetry={refetchStats}
+          className="max-w-lg w-full"
+        />
       </div>
     );
   }
