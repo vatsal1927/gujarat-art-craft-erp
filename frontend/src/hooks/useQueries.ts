@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from './queryKeys';
+import { MODULE_CACHE_CONFIG } from '../lib/queryClient';
 import {
   InvoiceRepository,
   DashboardRepository,
@@ -28,6 +29,8 @@ export function useDashboardStats(options?: { enabled?: boolean }) {
       return DashboardRepository.getDashboardStats(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
+    staleTime: MODULE_CACHE_CONFIG.dashboard.staleTime,
+    gcTime: MODULE_CACHE_CONFIG.dashboard.gcTime,
   });
 }
 
@@ -42,6 +45,8 @@ export function useInvoices(options?: { enabled?: boolean }) {
       return InvoiceRepository.getInvoices(actor);
     },
     enabled: (options?.enabled !== false) && !!actor && !isFetching,
+    staleTime: MODULE_CACHE_CONFIG.invoices.staleTime,
+    gcTime: MODULE_CACHE_CONFIG.invoices.gcTime,
   });
 }
 
