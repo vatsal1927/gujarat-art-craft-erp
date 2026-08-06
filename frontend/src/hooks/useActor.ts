@@ -2,11 +2,12 @@ import { useInternetIdentity } from './useInternetIdentity';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { type backendInterface } from '../backend';
-import { createActorWithConfig } from '../config';
+import { createProductionIcpActor, pingCanisterBackend } from '../services/icpBackendService';
 import { MockBackend } from '../mockBackend';
 import { Ed25519KeyIdentity } from '@dfinity/identity';
 import { hexToBuf } from '../utils/credentialDerivation';
 import { queryKeys } from './queryKeys';
+import { logger } from '../utils/logger';
 
 export function useActor(): { actor: backendInterface | null; isFetching: boolean } {
     const { identity: iiIdentity } = useInternetIdentity();
@@ -26,7 +27,7 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
                 }
             }
         } catch (e) {
-            console.error('Failed to reconstruct password-based identity from local storage:', e);
+            logger.error('Actor', 'Failed to reconstruct password-based identity from local storage', e);
         }
         return undefined;
     })();
@@ -35,55 +36,44 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
         queryKey: queryKeys.actor(activeIdentity?.getPrincipal().toString()),
         queryFn: async () => {
             try {
-                const isAuthenticated = !!activeIdentity;
-
-                if (!isAuthenticated) {
-                    // Return anonymous actor if not authenticated
-                    const actor = await createActorWithConfig();
-                    // Verify if connectivity is working
-                    await actor.getSettings();
-                    return actor;
+                const actor = await createProductionIcpActor(activeIdentity);
+                const pingResult = await pingCanisterBackend(actor);
+                
+                if (!pingResult.success) {
+                    const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
+                    if (isProduction) {
+                        logger.error('Actor', 'Production ICP Canister Ping Failed. Failing safely.', pingResult.error);
+                        throw new Error(pingResult.error);
+                    } else {
+                        logger.warn('Actor', 'Local canister ping failed, using local storage fallback for dev unit testing');
+                        return new MockBackend();
+                    }
                 }
 
-                const actorOptions = {
-                    agentOptions: {
-                        identity: activeIdentity
-                    }
-                };
-
-                const actor = await createActorWithConfig(actorOptions);
-                await actor.getSettings();
                 return actor;
             } catch (err) {
                 const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
                 if (isProduction) {
-                    console.error("Critical Production Error: Canister backend is unavailable. Failing safely.", err);
+                    logger.error('Actor', 'Critical Production Error: Canister backend is unavailable. Failing safely.', err);
                     throw err;
                 } else {
-                    console.warn("Unable to connect to canister backend, falling back to local storage mock backend", err);
+                    logger.warn('Actor', 'Unable to connect to canister backend, falling back to local storage backend', err);
                     return new MockBackend();
                 }
             }
         },
-        // Only refetch when identity changes
         staleTime: Infinity,
-        // This will cause the actor to be recreated when the identity changes
         enabled: true
     });
 
-    // When the actor changes, invalidate dependent queries
     useEffect(() => {
         if (actorQuery.data) {
             const actorKeyRoot = queryKeys.actor()[0];
             queryClient.invalidateQueries({
-                predicate: (query) => {
-                    return !query.queryKey.includes(actorKeyRoot);
-                }
+                predicate: (query) => !query.queryKey.includes(actorKeyRoot)
             });
             queryClient.refetchQueries({
-                predicate: (query) => {
-                    return !query.queryKey.includes(actorKeyRoot);
-                }
+                predicate: (query) => !query.queryKey.includes(actorKeyRoot)
             });
         }
     }, [actorQuery.data, queryClient]);
