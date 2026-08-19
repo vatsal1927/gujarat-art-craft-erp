@@ -95,7 +95,7 @@ export async function createActorWithConfig(options?: CreateActorOptions): Promi
         ...options.agentOptions,
         host: config.backend_host
     });
-    if (config.backend_host?.includes('localhost')) {
+    if (config.backend_host?.includes('localhost') || config.backend_host?.includes('127.0.0.1')) {
         await agent.fetchRootKey().catch((err) => {
             console.warn('Unable to fetch root key. Check to ensure that your local replica is running');
             console.error(err);

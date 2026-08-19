@@ -37,6 +37,17 @@ module {
     canAccessReports : Bool;
   };
 
+  public type IdentityProviderType = {
+    #InternetIdentity;
+    #Future : Text;
+  };
+
+  public type LinkedIdentity = {
+    providerType : IdentityProviderType;
+    providerId : Text;
+    linkedAt : Time.Time;
+  };
+
   public type User = {
     principalId : Principal;
     name : Text;
@@ -53,6 +64,7 @@ module {
     lastLogin : ?Text;
     department : ?Department;
     permissions : ?Permissions;
+    linkedIdentities : ?[LinkedIdentity];
   };
 
   public type ActivityLog = {
@@ -134,9 +146,21 @@ module {
     lastPaymentId : Nat;
   };
 
+  public type UnitConfig = {
+    unitLabel : Text;
+    unitType : Text;
+    symbol : Text;
+    conversionToBase : ?Float;
+  };
+
   public type BOMRequirement = {
     materialId : Text;
     quantity : Float;
+    qtyPerUnit : ?Float;
+    unitConfig : ?UnitConfig;
+    legacyUnit : ?Text;
+    qtyPerUnitBase : ?Float;
+    schemaVersion : ?Int;
   };
 
   public type ProductItem_New = {
@@ -148,6 +172,8 @@ module {
     productionCost : Float;
     bom : [BOMRequirement];
     openingStock : ?Int;
+    availableToSell : ?Int;
+    reservedStock : ?Int;
   };
 
   public type RawMaterial = {
@@ -161,6 +187,9 @@ module {
     unitCost : Float;
     unit : Text;
     minStockAlert : Float;
+    minimumStock : ?Float;
+    preferredVendor : ?Text;
+    reorderLevel : ?Float;
   };
 
   public type PurchaseItem = {
@@ -298,6 +327,12 @@ module {
     newStock : ?Float;
     collectionId : ?Text;
     oldAcceptedQty : ?Float;
+    createdAt : ?Text;
+    createdBy : ?Text;
+    createdById : ?Text;
+    inspectedBy : ?Text;
+    inspectedById : ?Text;
+    inspectedAt : ?Text;
   };
 
   public type StockMovement = {
@@ -441,6 +476,8 @@ module {
           productionCost = 0.0;
           bom = [];
           openingStock = ?oldProd.stock;
+          availableToSell = null;
+          reservedStock = null;
         };
       }
     );

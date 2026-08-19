@@ -422,15 +422,15 @@ const Navigation = () => {
                 onClick={(e) => { e.stopPropagation(); handleProfileToggle(); }}
                 className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#D4A017]/40 hover:bg-white/5 transition-all focus:outline-none"
               >
-                {user.profilePhoto ? (
-                  <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+                {user?.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-[#D4A017]/10 text-[#D4A017] font-bold text-sm flex items-center justify-center">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
                 <div className="text-left leading-none hidden xl:block text-[#F8F2E8]">
-                  <p className="text-xs font-extrabold">{user.name}</p>
+                  <p className="text-xs font-extrabold">{user?.name || 'User'}</p>
                   <span className="text-[9px] font-bold text-[#D4A017] uppercase mt-0.5 block leading-none">
                     {roleName}
                   </span>
@@ -441,8 +441,8 @@ const Navigation = () => {
               {profileDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-56 rounded-xl border-2 border-[#C89B3C] bg-[#F8F2E8] shadow-xl py-1.5 z-50 text-[#3A1F12]">
                   <div className="px-4 py-2 border-b border-[#C89B3C]/20 mb-1">
-                    <p className="text-xs font-bold text-[#7B0F1A]">{user.name}</p>
-                    <p className="text-[10px] text-slate-500 truncate">@{user.username || 'user'}</p>
+                    <p className="text-xs font-bold text-[#7B0F1A]">{user?.name || 'User'}</p>
+                    <p className="text-[10px] text-slate-500 truncate">@{user?.username || 'user'}</p>
                   </div>
                   <Link
                     to="/profile"
@@ -585,15 +585,15 @@ const Navigation = () => {
             {/* Mobile Profile Display & Logout */}
             <div className="border-t border-[#C89B3C]/20 pt-3 pb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {user.profilePhoto ? (
-                  <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
+                {user?.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-[#7B0F1A]/10 text-[#7B0F1A] font-bold text-sm flex items-center justify-center border border-[#D4A017]/30">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
                 <div className="text-left leading-none">
-                  <p className="text-xs font-extrabold text-[#7B0F1A]">{user.name}</p>
+                  <p className="text-xs font-extrabold text-[#7B0F1A]">{user?.name || 'User'}</p>
                   <span className="text-[9px] font-bold text-[#D4A017] uppercase mt-0.5 block leading-none">
                     {roleName}
                   </span>

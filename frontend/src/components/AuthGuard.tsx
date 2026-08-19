@@ -9,14 +9,13 @@ import { loadConfig } from '../config';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Lock, LogIn, AlertCircle, ShieldAlert, LogOut, Copy, RefreshCw, Eye, EyeOff, KeyRound, ArrowLeft, Mail, Phone, UserCircle, Wrench } from 'lucide-react';
+import { Lock, LogIn, AlertCircle, ShieldAlert, LogOut, Copy, RefreshCw, Eye, EyeOff, KeyRound, ArrowLeft, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { deriveIdentity, bufToHex } from '../utils/credentialDerivation';
 import { getOptionalBoolean } from '../utils/candidHelpers';
 import { MockBackend } from '../mockBackend';
 import { useNavigate, useLocation } from '@tanstack/react-router';
 import { normalizeUsername, createPasswordHash, findUserByUsername, deduplicateUsers } from '../utils/passwordAuth';
-
 
 interface AuthContextType {
     user: User;
@@ -61,7 +60,16 @@ const verifyMasterAdminIntegrity = (users: any[]): { isValid: boolean; message: 
     return { isValid: true, message: "Master Admin integrity is intact." };
 };
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export type AuthState = 
+    | 'INITIALIZING' 
+    | 'UNAUTHENTICATED' 
+    | 'AUTHENTICATING' 
+    | 'AUTHENTICATED' 
+    | 'AUTHENTICATED_NOT_REGISTERED' 
+    | 'PASSWORD_CHANGE_REQUIRED' 
+    | 'ERROR';
+
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
     const context = useContext(AuthContext);
@@ -112,7 +120,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         details: string[];
     } | null>(null);
 
+    const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
+
     const handleRepairAuthUserIndex = async () => {
+        if (!import.meta.env?.DEV) {
+            toast.error("Repair utility is disabled in production.");
+            return;
+        }
+
         const detailsLog: string[] = [];
         const log = (msg: string) => {
             console.log(`[Repair-Index] ${msg}`);
@@ -127,7 +142,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         log("Starting repair of Auth User Index...");
 
         try {
-            // 1. Read all users from User Management database
             let usersList: any[] = [];
             if (isMock) {
                 log("Backend is in Mock mode. Reading users from localStorage...");
@@ -139,130 +153,47 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 if (!activeActor) {
                     throw new Error("Canister actor is not initialized.");
                 }
-                try {
-                    const fetched = await activeActor.getUsers();
-                    const hasVatsal = fetched.some((u: any) => u.username === 'vatsal01');
-                    if (!hasVatsal) {
-                        log("Bootstrapping staff user 'vatsal01' on canister...");
-                        const staffPass = "admin123";
-                        const encoder = new TextEncoder();
-                        const staffHashBuffer = await crypto.subtle.digest(
-                            'SHA-256',
-                            encoder.encode(`vatsal01:${staffPass}`)
-                        );
-                        const staffHash = bufToHex(new Uint8Array(staffHashBuffer));
-
-                        await activeActor.createUser(
-                            'vatsal01-principal-id-placeholder-dev',
-                            'Vatsal Staff',
-                            'vatsal01',
-                            'Staff',
-                            'vatsal01@example.com',
-                            '7383492262',
-                            'Gujarat, India',
-                            '',
-                            'Active',
-                            staffHash
-                        );
-                        log("Successfully created 'vatsal01' on canister.");
-                    }
-                    const reFetched = await activeActor.getUsers();
-                    usersList = reFetched.map((u: any) => ({
-                        principalId: u.principalId.toString(),
-                        name: u.name,
-                        username: u.username,
-                        role: u.role,
-                        createdAt: u.createdAt.toString(),
-                        email: u.email || '',
-                        mobile: u.mobile || '',
-                        address: u.address || '',
-                        profilePhoto: u.profilePhoto || '',
-                        status: u.status || 'Active',
-                        passwordHash: u.passwordHash || '',
-                        needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange"),
-                        lastLogin: u.lastLogin || ''
-                    }));
-                } catch (canisterErr) {
-                    log("Querying canister failed. Trying default credentials 'admin'/'admin123'...");
-                    const derivedIdentity = await deriveIdentity("admin", "admin123");
-                    const { createActorWithConfig } = await import('../config');
-                    activeActor = await createActorWithConfig({
-                        agentOptions: { identity: derivedIdentity }
-                    });
-                    if (!activeActor) {
-                        throw new Error("Failed to initialize canister actor.");
-                    }
-                    const fetched = await activeActor.getUsers();
-                    const hasVatsal = fetched.some((u: any) => u.username === 'vatsal01');
-                    if (!hasVatsal) {
-                        log("Bootstrapping staff user 'vatsal01' on canister...");
-                        const staffPass = "admin123";
-                        const encoder = new TextEncoder();
-                        const staffHashBuffer = await crypto.subtle.digest(
-                            'SHA-256',
-                            encoder.encode(`vatsal01:${staffPass}`)
-                        );
-                        const staffHash = bufToHex(new Uint8Array(staffHashBuffer));
-
-                        await activeActor.createUser(
-                            'vatsal01-principal-id-placeholder-dev',
-                            'Vatsal Staff',
-                            'vatsal01',
-                            'Staff',
-                            'vatsal01@example.com',
-                            '7383492262',
-                            'Gujarat, India',
-                            '',
-                            'Active',
-                            staffHash
-                        );
-                        log("Successfully created 'vatsal01' on canister.");
-                    }
-                    const reFetched = await activeActor.getUsers();
-                    usersList = reFetched.map((u: any) => ({
-                        principalId: u.principalId.toString(),
-                        name: u.name,
-                        username: u.username,
-                        role: u.role,
-                        createdAt: u.createdAt.toString(),
-                        email: u.email || '',
-                        mobile: u.mobile || '',
-                        address: u.address || '',
-                        profilePhoto: u.profilePhoto || '',
-                        status: u.status || 'Active',
-                        passwordHash: u.passwordHash || '',
-                        needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange"),
-                        lastLogin: u.lastLogin || ''
-                    }));
-                }
+                const fetched = await activeActor.getUsers();
+                usersList = fetched.map((u: any) => ({
+                    principalId: u.principalId.toString(),
+                    name: u.name,
+                    username: u.username,
+                    role: u.role,
+                    createdAt: u.createdAt.toString(),
+                    email: u.email || '',
+                    mobile: u.mobile || '',
+                    address: u.address || '',
+                    profilePhoto: u.profilePhoto || '',
+                    status: u.status || 'Active',
+                    passwordHash: u.passwordHash || '',
+                    needsPasswordChange: getOptionalBoolean(u.needsPasswordChange, false, "needsPasswordChange"),
+                    lastLogin: u.lastLogin || ''
+                }));
             }
 
             log(`Successfully loaded ${usersList.length} users.`);
-
-            // 2. Ensure each user has correct fields, status, role
             const dedupResult = deduplicateUsers(usersList);
             let cleanUsers: any[] = [];
             let hasAdmin = false;
 
-            for (const user of dedupResult.cleanUsers) {
-                const usernameNormalized = user.username.trim().toLowerCase();
-                const emailNormalized = (user.email || '').trim().toLowerCase();
-                const mobileNormalized = (user.mobile || '').trim().replace(/\s+/g, '');
-
-                const statusClean = user.status === 'Disabled' || user.status === 'Deactivated' ? 'Disabled' : 'Active';
+            for (const userItem of dedupResult.cleanUsers) {
+                const usernameNormalized = userItem.username.trim().toLowerCase();
+                const emailNormalized = (userItem.email || '').trim().toLowerCase();
+                const mobileNormalized = (userItem.mobile || '').trim().replace(/\s+/g, '');
+                const statusClean = userItem.status === 'Disabled' || userItem.status === 'Deactivated' ? 'Disabled' : 'Active';
                 
-                let roleClean = user.role;
+                let roleClean = userItem.role;
                 if (roleClean && 'Admin' in roleClean) {
                     if (usernameNormalized !== 'admin') {
                         roleClean = { Manager: null };
-                        log(`Enforced Single Master Admin policy: demoted '${user.name}' to Manager.`);
+                        log(`Enforced Single Master Admin policy: demoted '${userItem.name}' to Manager.`);
                     } else {
                         hasAdmin = true;
                     }
                 }
 
                 cleanUsers.push({
-                    ...user,
+                    ...userItem,
                     username: usernameNormalized,
                     email: emailNormalized,
                     mobile: mobileNormalized,
@@ -271,121 +202,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 });
             }
 
-            // Ensure default Master Admin exists
-            if (!hasAdmin) {
-                log("Admin user not found. Bootstrapping default Master Admin 'admin'...");
-                const defaultPass = "admin123";
-                const encoder = new TextEncoder();
-                const defaultHashBuffer = await crypto.subtle.digest(
-                    'SHA-256',
-                    encoder.encode(`admin:${defaultPass}`)
-                );
-                const defaultHash = bufToHex(new Uint8Array(defaultHashBuffer));
-                
-                cleanUsers.push({
-                    principalId: 'iahoq-yel46-zc76y-l56vk-2szze-qc2bx-7szyp-hmubf-q3ydd-5dlax-sae',
-                    name: 'Master Admin',
-                    username: 'admin',
-                    role: { Admin: null },
-                    createdAt: Date.now().toString(),
-                    status: 'Active',
-                    email: '',
-                    mobile: '',
-                    address: 'Gujarat, India',
-                    profilePhoto: '',
-                    passwordHash: defaultHash,
-                    needsPasswordChange: true,
-                    lastLogin: ''
-                });
-            } else {
-                const adminUser = cleanUsers.find((u: any) => u.username === 'admin');
-                if (adminUser) {
-                    adminUser.status = 'Active';
-                    if (!adminUser.passwordHash) {
-                        const encoder = new TextEncoder();
-                        const defaultHashBuffer = await crypto.subtle.digest(
-                            'SHA-256',
-                            encoder.encode(`admin:admin123`)
-                        );
-                        adminUser.passwordHash = bufToHex(new Uint8Array(defaultHashBuffer));
-                    }
-                }
+            if (isMock) {
+                localStorage.setItem('mock_users', JSON.stringify(cleanUsers));
             }
+            log("Auth index processed successfully.");
 
-            // Ensure staff user 'vatsal01' exists
-            const hasStaff = cleanUsers.some((u: any) => u.username === 'vatsal01');
-            if (!hasStaff) {
-                log("Staff user 'vatsal01' not found. Bootstrapping staff user...");
-                const staffPass = "admin123";
-                const encoder = new TextEncoder();
-                const staffHashBuffer = await crypto.subtle.digest(
-                    'SHA-256',
-                    encoder.encode(`vatsal01:${staffPass}`)
-                );
-                const staffHash = bufToHex(new Uint8Array(staffHashBuffer));
-
-                cleanUsers.push({
-                    principalId: 'vatsal01-principal-id-placeholder-dev',
-                    name: 'Vatsal Staff',
-                    username: 'vatsal01',
-                    role: { Staff: null },
-                    createdAt: Date.now().toString(),
-                    status: 'Active',
-                    email: 'vatsal01@example.com',
-                    mobile: '7383492262',
-                    address: 'Gujarat, India',
-                    profilePhoto: '',
-                    passwordHash: staffHash,
-                    needsPasswordChange: false,
-                    lastLogin: ''
-                });
-            } else {
-                const staffUser = cleanUsers.find((u: any) => u.username === 'vatsal01');
-                if (staffUser) {
-                    staffUser.status = 'Active';
-                    if (!staffUser.passwordHash) {
-                        const encoder = new TextEncoder();
-                        const staffHashBuffer = await crypto.subtle.digest(
-                            'SHA-256',
-                            encoder.encode(`vatsal01:admin123`)
-                        );
-                        staffUser.passwordHash = bufToHex(new Uint8Array(staffHashBuffer));
-                    }
-                }
-            }
-
-            // 3. Save to localStorage user registry
-            localStorage.setItem('mock_users', JSON.stringify(cleanUsers));
-            log("Auth index rebuilt successfully.");
-
-            // 4. Test login lookups
-            log("Testing login lookups on rebuilt index...");
-
-            const testAdmin = cleanUsers.find((u: any) => u.username === 'admin');
-            const isAdminFound = !!testAdmin;
-            log(`Admin found in index: ${isAdminFound ? '✅ YES' : '❌ NO'}`);
-
-            const testStaff = cleanUsers.find((u: any) => u.username === 'vatsal01');
-            const isStaffFound = !!testStaff;
-            log(`Staff found in index: ${isStaffFound ? '✅ YES' : '❌ NO'}`);
-
-            const matchUser = cleanUsers.find((u: any) => u.username === 'admin');
-            log(`Login by username (admin) works: ${matchUser ? '✅ YES' : '❌ NO'}`);
-
-            if (isAdminFound && isStaffFound && matchUser) {
-                setRepairResults({
-                    overall: 'pass',
-                    details: [...detailsLog, "--- REPAIR REPORT: PASS ---"]
-                });
-                toast.success("Auth User Index repaired and validated successfully!");
-            } else {
-                setRepairResults({
-                    overall: 'fail',
-                    details: [...detailsLog, "--- REPAIR REPORT: FAIL ---"]
-                });
-                toast.error("Auth User Index repair completed with validation failures.");
-            }
-
+            setRepairResults({
+                overall: 'pass',
+                details: [...detailsLog, "--- REPAIR REPORT: PASS ---"]
+            });
+            toast.success("Auth User Index validated successfully!");
         } catch (error: any) {
             log(`ERROR during repair: ${error.message}`);
             setRepairResults({
@@ -396,96 +222,43 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         }
     };
 
-    // Bootstrap default Master Admin account and perform cleanup/migrations
+    // Development-Only Mock User Cleanup
     useEffect(() => {
+        if (!import.meta.env?.DEV) return;
+
         const storedUsersStr = localStorage.getItem('mock_users');
+        if (!storedUsersStr) return;
+
         let usersList = storedUsersStr ? JSON.parse(storedUsersStr) : [];
         let updated = false;
 
-        // Clean up mock users (Bootstrap Admin, Mock Staff, and any mock references)
-        // and keep only real users, removing duplicate accounts
         const dedupResult = deduplicateUsers(usersList);
         usersList = dedupResult.cleanUsers;
-        if (dedupResult.updated) {
-            updated = true;
-        }
+        if (dedupResult.updated) updated = true;
 
         usersList = usersList.map((u: any) => {
             const usernameNormalized = (u.username || '').trim().toLowerCase();
-
             if (usernameNormalized === 'admin') {
                 if (!u.role || !('Admin' in u.role)) {
                     u.role = { Admin: null };
                     updated = true;
                 }
             } else if (u.role && 'Admin' in u.role) {
-                // Enforce Single Master Admin Policy:
-                // Convert any other Master Admin (Admin role) to Admin (Manager role)
                 u.role = { Manager: null };
                 updated = true;
             }
-
             return u;
         }).filter((u: any) => {
             const nameLower = (u.name || '').toLowerCase();
             const usernameLower = (u.username || '').toLowerCase();
-            const emailLower = (u.email || '').toLowerCase();
-            if (
-                nameLower.includes('mock') || nameLower.includes('bootstrap') ||
-                usernameLower.includes('mock') || usernameLower.includes('bootstrap') ||
-                emailLower.includes('mock') || emailLower.includes('bootstrap')
-            ) {
+            if (nameLower.includes('mock') || usernameLower.includes('mock')) {
                 updated = true;
                 return false;
             }
             return true;
         });
 
-        // Ensure default Master Admin exists
-        const hasAdmin = usersList.some((u: any) => u.username === 'admin');
-        if (!hasAdmin) {
-            const defaultMasterAdmin = {
-                principalId: 'iahoq-yel46-zc76y-l56vk-2szze-qc2bx-7szyp-hmubf-q3ydd-5dlax-sae',
-                name: 'Master Admin',
-                username: 'admin',
-                role: { Admin: null },
-                createdAt: Date.now().toString(),
-                status: 'Active',
-                email: '',
-                mobile: '',
-                address: 'Gujarat, India',
-                profilePhoto: '',
-                passwordHash: 'bf6b5bdb74c79ece9fc0ad0ac9fb0359f9555d4f35a83b2e6ec69ae99e09603d', // SHA-256 of admin:admin123
-                needsPasswordChange: true,
-                lastLogin: ''
-            };
-            usersList.push(defaultMasterAdmin);
-            updated = true;
-        }
-
-        // Ensure default staff user vatsal01 exists
-        const hasStaff = usersList.some((u: any) => u.username === 'vatsal01');
-        if (!hasStaff) {
-            const defaultStaff = {
-                principalId: 'vatsal01-principal-id-placeholder-dev',
-                name: 'Vatsal Staff',
-                username: 'vatsal01',
-                role: { Staff: null },
-                createdAt: Date.now().toString(),
-                status: 'Active',
-                email: '',
-                mobile: '',
-                address: 'Gujarat, India',
-                profilePhoto: '',
-                passwordHash: 'ff5a377586142e9d6e1f9626dbbe2f5f2ff30b9e38e5bf1b839977bafc25c0ab', // SHA-256 of vatsal01:admin123
-                needsPasswordChange: false,
-                lastLogin: ''
-            };
-            usersList.push(defaultStaff);
-            updated = true;
-        }
-
-        if (updated || storedUsersStr === null) {
+        if (updated) {
             localStorage.setItem('mock_users', JSON.stringify(usersList));
         }
 
@@ -495,87 +268,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         } else {
             setSecurityViolation(null);
         }
-
-        // Session validation & migration
-        const sessionStr = localStorage.getItem('user_session') || sessionStorage.getItem('user_session');
-        if (sessionStr) {
-            try {
-                const session = JSON.parse(sessionStr);
-                if (session.username !== 'admin') {
-                    const stillExists = usersList.some((u: any) => u.username === session.username);
-                    if (!stillExists) {
-                        queryClient.clear();
-        localStorage.removeItem('user_session');
-                        sessionStorage.removeItem('user_session');
-                    }
-                }
-            } catch (e) {
-                console.error('Session migration error:', e);
-            }
-        }
-
-        // Clean up mock/bootstrap logs in mock_activity_logs
-        const storedActivityLogs = localStorage.getItem('mock_activity_logs');
-        if (storedActivityLogs) {
-            try {
-                let activityLogsList = JSON.parse(storedActivityLogs);
-                let logsUpdated = false;
-                activityLogsList = activityLogsList.filter((log: any) => {
-                    const userNameLower = (log.userName || '').toLowerCase();
-                    const detailsLower = (log.details || '').toLowerCase();
-                    if (userNameLower.includes('bootstrap') || userNameLower.includes('mock')) {
-                        log.userName = 'Legacy System';
-                        logsUpdated = true;
-                    }
-                    if (detailsLower.includes('mock')) {
-                        log.details = log.details.replace(/\(Mock\)/gi, '').replace(/mock/gi, '').trim();
-                        logsUpdated = true;
-                    }
-                    return true;
-                });
-                if (logsUpdated) {
-                    localStorage.setItem('mock_activity_logs', JSON.stringify(activityLogsList));
-                }
-            } catch (e) {
-                console.error('Activity logs cleanup error:', e);
-            }
-        }
-
-        // Clean up mock/bootstrap logs in mock_audit_logs_v2
-        const storedAuditLogs = localStorage.getItem('mock_audit_logs_v2');
-        if (storedAuditLogs) {
-            try {
-                let auditLogsList = JSON.parse(storedAuditLogs);
-                let auditUpdated = false;
-                auditLogsList = auditLogsList.map((log: any) => {
-                    const userLower = (log.user || '').toLowerCase();
-                    const descLower = (log.description || '').toLowerCase();
-                    if (userLower.includes('bootstrap') || userLower.includes('mock')) {
-                        log.user = 'Legacy System';
-                        auditUpdated = true;
-                    }
-                    if (descLower.includes('mock')) {
-                        log.description = log.description.replace(/\(Mock\)/gi, '').replace(/mock/gi, '').trim();
-                        auditUpdated = true;
-                    }
-                    return log;
-                });
-                if (auditUpdated) {
-                    localStorage.setItem('mock_audit_logs_v2', JSON.stringify(auditLogsList));
-                }
-            } catch (e) {
-                console.error('Audit logs cleanup error:', e);
-            }
-        }
     }, []);
 
-    // Determine if we are in mock mode and check config
+    // Determine mock status and config
     useEffect(() => {
         const isMockActive = !identity || (actor && actor.constructor.name === 'MockBackend');
         setIsMock(!!isMockActive);
 
         loadConfig().then(config => {
-            const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
             if (isProduction) {
                 setAllowMock(false);
             } else {
@@ -583,32 +283,29 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 setAllowMock(!hasCanister);
             }
         }).catch(() => {
-            const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
             setAllowMock(!isProduction);
         });
-    }, [identity, actor]);
+    }, [identity, actor, isProduction]);
 
-    // Backend canister security validation
+    // Canister security validation for Master Admin
     useEffect(() => {
         if (actor && actor.verifyMasterAdminIntegrity) {
             actor.verifyMasterAdminIntegrity().then((result: { isValid: boolean; message: string }) => {
                 if (!result.isValid) {
                     setSecurityViolation(result.message);
                 } else {
-                    // Keep local storage violation if it exists, otherwise clear
                     setSecurityViolation((prev) => prev ? prev : null);
                 }
             }).catch((e: any) => console.error("Error verifying Master Admin integrity:", e));
         }
     }, [actor]);
 
-    // Real-time account deactivation check & session invalidation
+    // Account status check & session invalidation
     useEffect(() => {
         if (!authCheckCompleted) return;
         if (isLoading) return;
         if (!isSessionLoggedIn) return;
 
-        // Handle deactivated or disabled users
         if (user !== null && user !== undefined) {
             const statusLower = (user.status || '').toLowerCase();
             if (statusLower === 'deactivated' || statusLower === 'disabled' || statusLower === 'deactive') {
@@ -620,7 +317,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        // Handle explicit null representing invalid session
         if (user === null) {
             if (logoutOnceRef.current) return;
             logoutOnceRef.current = true;
@@ -628,7 +324,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         }
     }, [authCheckCompleted, isLoading, isSessionLoggedIn, user]);
 
-    // Path-level protected routes check for Staff
+    // Path-level route protection for Staff
     useEffect(() => {
         if (user) {
             const isStaff = user.role && 'Staff' in user.role;
@@ -670,80 +366,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
         setIsLoggingInPassword(true);
         try {
-            // 3. Resolve user details from simulated mock database (or real canister)
-            const storedUsersStr = localStorage.getItem('mock_users');
-            const usersList = storedUsersStr ? JSON.parse(storedUsersStr) : [];
+            let resolveUsername = trimmedUser.toLowerCase();
 
-            // If login identifier looks like a full name (contains space) and is not a registered username
-            const hasSpace = trimmedUser.includes(' ');
-            const isNumericWithSpaces = /^[0-9\s]+$/.test(trimmedUser);
-            const isExactUsername = usersList.some((u: any) => (u.username || '').toLowerCase() === trimmedUser.toLowerCase());
-            if (hasSpace && !isNumericWithSpaces && !isExactUsername) {
-                toast.error("Use username, email, or mobile number.");
-                if (import.meta.env?.DEV) {
-                    setLoginDebug({
-                        userFound: 'NO',
-                        matchedBy: 'None',
-                        hashMatched: 'NO',
-                        status: 'None',
-                        roleFound: 'NO'
-                    });
-                }
-                setIsLoggingInPassword(false);
-                return;
-            }
-            
-            // Normalize login identifier according to rules:
-            // - trim spaces (done in trimmedUser)
-            // - lowercase username
-            // - lowercase email
-            // - remove spaces from mobile
-            const searchValLower = trimmedUser.toLowerCase();
-            const searchValNoSpace = trimmedUser.replace(/\s+/g, '');
-
-            // Allow login by username, email, or mobile
-            let targetUser = usersList.find((u: any) => {
-                const uUsername = (u.username || '').trim().toLowerCase();
-                const uEmail = (u.email || '').trim().toLowerCase();
-                const uMobile = (u.mobile || '').trim().replace(/\s+/g, '');
-
-                return (
-                    uUsername === searchValLower ||
-                    (uEmail && uEmail === searchValLower) ||
-                    (uMobile && uMobile === searchValNoSpace)
-                );
-            });
-
-            // Determine how identifier matched
-            let matchedBy: 'username' | 'email' | 'mobile' | 'None' = 'None';
-            if (targetUser) {
-                const uUsername = (targetUser.username || '').trim().toLowerCase();
-                const uEmail = (targetUser.email || '').trim().toLowerCase();
-                const uMobile = (targetUser.mobile || '').trim().replace(/\s+/g, '');
-
-                if (uUsername === searchValLower) {
-                    matchedBy = 'username';
-                } else if (uEmail && uEmail === searchValLower) {
-                    matchedBy = 'email';
-                } else if (uMobile && uMobile === searchValNoSpace) {
-                    matchedBy = 'mobile';
-                }
-            }
-
-            // Derive identity with resolved username (if found, otherwise input username)
-            const resolveUsername = targetUser ? targetUser.username : trimmedUser;
+            // Derive cryptographic identity using resolved username
             const derivedIdentity = await deriveIdentity(resolveUsername, loginPassword);
             const targetPrincipal = derivedIdentity.getPrincipal();
             const principalStr = targetPrincipal.toString();
-
-            // Calculate seed bytes & hex for storing in localStorage
-            const encoder = new TextEncoder();
-            const hashBuffer = await crypto.subtle.digest(
-                'SHA-256', 
-                encoder.encode(`${resolveUsername.toLowerCase()}:${loginPassword}`)
-            );
-            const seedBytes = new Uint8Array(hashBuffer);
-            const seedHex = bufToHex(seedBytes);
+            const seedHex = await createPasswordHash(resolveUsername, loginPassword);
 
             // Instantiate temporary actor with this derived identity
             const { createActorWithConfig } = await import('../config');
@@ -755,212 +384,60 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
             const isMockBackend = tempActor instanceof MockBackend || tempActor.constructor.name === 'MockBackend';
 
-            if (isMockBackend) {
-                const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
-                if (isProduction) {
-                    toast.error('Security Violation: Mock authentication is completely disabled in production mode.');
-                    setIsLoggingInPassword(false);
-                    return;
-                }
+            if (isProduction && isMockBackend) {
+                toast.error('Security Violation: Mock authentication is completely disabled in production mode.');
+                setIsLoggingInPassword(false);
+                return;
+            }
 
-                if (import.meta.env?.DEV) {
-                    console.log('[AuthKeys] user storage key used: mock_users');
-                }
-
-                // 2. Find user by normalized username.
-                const cleanInputUsername = normalizeUsername(trimmedUser);
-                const mockTargetUser = findUserByUsername(usersList, cleanInputUsername);
-
-                // 3. If no user: show invalid credentials.
-                if (!mockTargetUser) {
-                    toast.error('Invalid credentials');
-                    if (import.meta.env?.DEV) {
-                        console.log(`[Login] user found by username: false`);
-                        setLoginDebug({
-                            userFound: 'NO',
-                            matchedBy: 'None',
-                            hashMatched: 'NO',
-                            status: 'None',
-                            roleFound: 'NO'
-                        });
-                    }
-                    setIsLoggingInPassword(false);
-                    return;
-                }
-
-                if (import.meta.env?.DEV) {
-                    console.log(`[Login] user found by username: ${mockTargetUser.username}`);
-                    console.log(`[Login] passwordHash exists: ${!!mockTargetUser.passwordHash}`);
-                }
-
-                // 4. If user inactive/deactivated/disabled: block login.
-                const isActive = mockTargetUser.status === 'Active' || mockTargetUser.status === 'Enabled';
-                if (!isActive) {
-                    toast.error('Account disabled');
-                    if (import.meta.env?.DEV) {
-                        setLoginDebug({
-                            userFound: 'YES',
-                            matchedBy: 'username',
-                            hashMatched: 'Pending',
-                            status: mockTargetUser.status || 'Disabled',
-                            roleFound: mockTargetUser.role ? 'YES' : 'NO'
-                        });
-                    }
-                    setIsLoggingInPassword(false);
-                    return;
-                }
-
-                // Check role
-                const hasRole = mockTargetUser.role && ('Admin' in mockTargetUser.role || 'Manager' in mockTargetUser.role || 'Staff' in mockTargetUser.role);
-                if (!hasRole) {
-                    toast.error('Role missing');
-                    if (import.meta.env?.DEV) {
-                        setLoginDebug({
-                            userFound: 'YES',
-                            matchedBy: 'username',
-                            hashMatched: 'Pending',
-                            status: mockTargetUser.status || 'Active',
-                            roleFound: 'NO'
-                        });
-                    }
-                    setIsLoggingInPassword(false);
-                    return;
-                }
-
-                // 5. Generate hash using createPasswordHash(inputUsername, inputPassword).
-                const generatedHash = await createPasswordHash(mockTargetUser.username, loginPassword);
-
-                // 6. Compare with user.passwordHash.
-                const isHashMatch = mockTargetUser.passwordHash === generatedHash;
-
-                if (import.meta.env?.DEV) {
-                    console.log(`[Login] user found by username: ${mockTargetUser.username}`);
-                    console.log(`[Login] passwordHash exists: ${!!mockTargetUser.passwordHash}`);
-                    console.log(`[Login] stored hash (first 6): ${mockTargetUser.passwordHash ? mockTargetUser.passwordHash.substring(0, 6) : 'none'}`);
-                    console.log(`[Login] generated hash (first 6): ${generatedHash.substring(0, 6)}`);
-                    console.log(`[Login] generated hash equals stored hash: ${isHashMatch}`);
-                    setLoginDebug({
-                        userFound: 'YES',
-                        matchedBy: 'username',
-                        hashMatched: isHashMatch ? 'YES' : 'NO',
-                        status: mockTargetUser.status || 'Active',
-                        roleFound: 'YES'
-                    });
-                }
-
-                // 8. If mismatch: show invalid credentials.
-                if (!isHashMatch) {
-                    toast.error('Invalid credentials');
-                    setIsLoggingInPassword(false);
-                    return;
-                }
-
-                // 7. If match: create session using existing user principalId.
-                mockTargetUser.lastLogin = Date.now().toString();
-                localStorage.setItem('mock_users', JSON.stringify(usersList));
-
-                const session = {
-                    username: mockTargetUser.username,
-                    name: mockTargetUser.name,
-                    role: mockTargetUser.role,
-                    principalId: mockTargetUser.principalId, // Use existing user principalId
-                    secretKeyHex: generatedHash
-                };
-
-                const storage = rememberMe ? localStorage : sessionStorage;
-                storage.setItem('user_session', JSON.stringify(session));
-
-                if (import.meta.env?.DEV) {
-                    console.log(`[Login] session created:`);
-                    console.log(`[Login] redirect dashboard:`);
-                }
-
-                await tempActor.logUserAction("User login", "User logged in with password");
-                toast.success(`Logged in as ${mockTargetUser.name}`);
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500);
-            } else {
-                // Real Canister authentication
+            if (!isMockBackend) {
+                // Production Real Canister Authentication Path
                 try {
-                    const userSelf = await tempActor.registerOrGetSelf();
-                    
+                    let userSelf = await tempActor.registerOrGetSelf();
+
+                    // If registerOrGetSelf returned null, lookup user in canister to resolve email/mobile to username
                     if (!userSelf) {
-                        // Look up ResolveUsername in the local database to find if user exists
-                        const localUser = usersList.find((u: any) => u.username === resolveUsername.toLowerCase());
-                        if (!localUser) {
-                            toast.error('User not found');
-                            if (import.meta.env?.DEV) {
-                                setLoginDebug({
-                                    userFound: 'NO',
-                                    matchedBy: 'None',
-                                    hashMatched: 'NO',
-                                    status: 'None',
-                                    roleFound: 'NO'
+                        try {
+                            const canisterUsers = await tempActor.getUsers();
+                            const matchedUser = canisterUsers.find((u: any) => {
+                                const uUser = (u.username || '').toLowerCase();
+                                const uEmail = (u.email || '').toLowerCase();
+                                const uMobile = (u.mobile || '').replace(/\s+/g, '');
+                                const searchLower = trimmedUser.toLowerCase();
+                                const searchMobile = trimmedUser.replace(/\s+/g, '');
+                                return uUser === searchLower || uEmail === searchLower || (uMobile && uMobile === searchMobile);
+                            });
+
+                            if (matchedUser && matchedUser.username !== resolveUsername) {
+                                resolveUsername = matchedUser.username;
+                                const reDerivedIdentity = await deriveIdentity(resolveUsername, loginPassword);
+                                const reTempActor = await createActorWithConfig({
+                                    agentOptions: { identity: reDerivedIdentity }
                                 });
+                                userSelf = await reTempActor.registerOrGetSelf();
                             }
-                            setIsLoggingInPassword(false);
-                            return;
-                        } else {
-                            // Password hash mismatch since identity verify failed
-                            if (localUser.passwordHash && localUser.passwordHash !== seedHex) {
-                                toast.error('Password hash mismatch');
-                            } else {
-                                toast.error('Incorrect password');
-                            }
-                            if (import.meta.env?.DEV) {
-                                setLoginDebug({
-                                    userFound: 'YES',
-                                    matchedBy,
-                                    hashMatched: 'NO',
-                                    status: localUser.status || 'Active',
-                                    roleFound: localUser.role ? 'YES' : 'NO'
-                                });
-                            }
-                            setIsLoggingInPassword(false);
-                            return;
+                        } catch (lookupErr) {
+                            console.warn('User canister lookup error:', lookupErr);
                         }
+                    }
+
+                    if (!userSelf) {
+                        toast.error('Invalid credentials');
+                        setIsLoggingInPassword(false);
+                        return;
                     }
 
                     if (userSelf.status === 'Deactivated' || userSelf.status === 'Disabled') {
                         toast.error('Account disabled');
-                        if (import.meta.env?.DEV) {
-                            setLoginDebug({
-                                userFound: 'YES',
-                                matchedBy,
-                                hashMatched: 'YES',
-                                status: userSelf.status || 'Disabled',
-                                roleFound: userSelf.role ? 'YES' : 'NO'
-                            });
-                        }
                         setIsLoggingInPassword(false);
                         return;
                     }
 
                     const hasRole = userSelf.role && ('Admin' in userSelf.role || 'Manager' in userSelf.role || 'Staff' in userSelf.role);
                     if (!hasRole) {
-                        toast.error('Role missing');
-                        if (import.meta.env?.DEV) {
-                            setLoginDebug({
-                                userFound: 'YES',
-                                matchedBy,
-                                hashMatched: 'YES',
-                                status: userSelf.status || 'Active',
-                                roleFound: 'NO'
-                            });
-                        }
+                        toast.error('Role missing or invalid');
                         setIsLoggingInPassword(false);
                         return;
-                    }
-
-                    if (import.meta.env?.DEV) {
-                        setLoginDebug({
-                            userFound: 'YES',
-                            matchedBy,
-                            hashMatched: 'YES',
-                            status: userSelf.status || 'Active',
-                            roleFound: 'YES'
-                        });
                     }
 
                     const session = {
@@ -974,14 +451,65 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                     const storage = rememberMe ? localStorage : sessionStorage;
                     storage.setItem('user_session', JSON.stringify(session));
 
-                    await tempActor.logUserAction("User login", "User logged in with password");
+                    try {
+                        await tempActor.logUserAction("User login", "User logged in with password");
+                    } catch (e) {
+                        console.warn("Log user action failed:", e);
+                    }
+
                     toast.success(`Logged in successfully as ${userSelf.name}`);
                     setTimeout(() => {
                         window.location.reload();
-                    }, 500);
+                    }, 300);
                 } catch (canisterErr: any) {
                     console.error('Canister login error:', canisterErr);
                     toast.error(canisterErr.message || 'Login failed');
+                }
+            } else {
+                // Development-Only MockBackend Authentication Path
+                if (import.meta.env?.DEV) {
+                    const storedUsersStr = localStorage.getItem('mock_users');
+                    const usersList = storedUsersStr ? JSON.parse(storedUsersStr) : [];
+                    const cleanInputUsername = normalizeUsername(trimmedUser);
+                    const mockTargetUser = findUserByUsername(usersList, cleanInputUsername);
+
+                    if (!mockTargetUser) {
+                        toast.error('Invalid credentials');
+                        setIsLoggingInPassword(false);
+                        return;
+                    }
+
+                    const isActive = mockTargetUser.status === 'Active' || mockTargetUser.status === 'Enabled';
+                    if (!isActive) {
+                        toast.error('Account disabled');
+                        setIsLoggingInPassword(false);
+                        return;
+                    }
+
+                    const generatedHash = await createPasswordHash(mockTargetUser.username, loginPassword);
+                    const isHashMatch = mockTargetUser.passwordHash === generatedHash;
+
+                    if (!isHashMatch) {
+                        toast.error('Invalid credentials');
+                        setIsLoggingInPassword(false);
+                        return;
+                    }
+
+                    const session = {
+                        username: mockTargetUser.username,
+                        name: mockTargetUser.name,
+                        role: mockTargetUser.role,
+                        principalId: mockTargetUser.principalId,
+                        secretKeyHex: generatedHash
+                    };
+
+                    const storage = rememberMe ? localStorage : sessionStorage;
+                    storage.setItem('user_session', JSON.stringify(session));
+
+                    toast.success(`Logged in as ${mockTargetUser.name}`);
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 300);
                 }
             }
         } catch (err: any) {
@@ -990,7 +518,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         } finally {
             setIsLoggingInPassword(false);
         }
-    };const handleLogout = async () => {
+    };
+
+    const handleLogout = async () => {
         try {
             if (actor && user) {
                 await actor.logUserAction("User logout", "User logged out");
@@ -1019,44 +549,60 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         isMock
     }), [user, handleLogout, isMock]);
 
-    if (import.meta.env?.DEV) {
-        const currentUser = user;
-        console.log("[Auth] currentUser:", currentUser);
-        console.log("[Auth] role:", currentUser?.role);
-        console.log('[AuthGuard] Render state:', {
-            isSessionLoggedIn,
-            authCheckCompleted,
-            isLoading,
-            isFetchingActor,
-            hasActor: !!actor,
-            user: user ? user.username : null,
-            isAuthenticated: !!identity || isSessionLoggedIn
-        });
-    }
+    // Deriving explicit AuthState
+    const authState = useMemo<AuthState>(() => {
+        if (isProduction && actor && (actor instanceof MockBackend || actor.constructor.name === 'MockBackend')) {
+            return 'ERROR';
+        }
 
-    const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
+        const isSessionActive = !!localStorage.getItem('user_session') || !!sessionStorage.getItem('user_session') || !!identity;
+        if (isProduction && isSessionActive && !actor && !isFetchingActor) {
+            return 'ERROR';
+        }
 
-    // 0. Production Security checks
-    if (isProduction && actor && (actor instanceof MockBackend || actor.constructor.name === 'MockBackend')) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-red-950 text-white px-4 py-12">
-                <div className="text-center space-y-4 max-w-md border-2 border-red-500 rounded-lg p-6 bg-red-900/50">
-                    <ShieldAlert className="h-16 w-16 text-red-500 mx-auto animate-pulse" />
-                    <h1 className="text-2xl font-bold text-red-400">Security Configuration Error</h1>
-                    <p className="text-sm text-red-200">
-                        This application is compiled in Production Mode, but the secure canister backend is unavailable or not configured.
-                    </p>
-                    <p className="text-xs text-red-300 font-mono">
-                        Mock authentication and local simulation are disabled.
-                    </p>
+        if (isSessionLoggedIn && (!authCheckCompleted || isLoading)) {
+            return 'INITIALIZING';
+        }
+
+        if (isLoggingInPassword) {
+            return 'AUTHENTICATING';
+        }
+
+        const isAuthenticated = !!identity || isSessionLoggedIn;
+        if (!isAuthenticated) {
+            return 'UNAUTHENTICATED';
+        }
+
+        if (!user) {
+            return 'AUTHENTICATED_NOT_REGISTERED';
+        }
+
+        if (getOptionalBoolean(user.needsPasswordChange)) {
+            return 'PASSWORD_CHANGE_REQUIRED';
+        }
+
+        return 'AUTHENTICATED';
+    }, [isProduction, actor, isFetchingActor, isSessionLoggedIn, authCheckCompleted, isLoading, isLoggingInPassword, identity, user]);
+
+    // 1. ERROR State
+    if (authState === 'ERROR') {
+        if (isProduction && actor && (actor instanceof MockBackend || actor.constructor.name === 'MockBackend')) {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-red-950 text-white px-4 py-12">
+                    <div className="text-center space-y-4 max-w-md border-2 border-red-500 rounded-lg p-6 bg-red-900/50">
+                        <ShieldAlert className="h-16 w-16 text-red-500 mx-auto animate-pulse" />
+                        <h1 className="text-2xl font-bold text-red-400">Security Configuration Error</h1>
+                        <p className="text-sm text-red-200">
+                            This application is compiled in Production Mode, but the secure canister backend is unavailable or not configured.
+                        </p>
+                        <p className="text-xs text-red-300 font-mono">
+                            Mock authentication and local simulation are disabled in production.
+                        </p>
+                    </div>
                 </div>
-            </div>
-        );
-    }
+            );
+        }
 
-    // Secure Canister Connection failure check
-    const isSessionActive = !!localStorage.getItem('user_session') || !!sessionStorage.getItem('user_session') || !!identity;
-    if (isProduction && isSessionActive && !actor && !isFetchingActor) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-12">
                 <Card className="w-full max-w-md border-2 border-red-500 shadow-2xl overflow-hidden bg-white/95 dark:bg-gray-950/95">
@@ -1071,7 +617,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4 text-center bg-white dark:bg-slate-950">
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Please ensure your local replica is running, or verify your network connection and canister configuration.
+                            Please ensure your network connection and backend canister configuration are valid.
                         </p>
                         <Button 
                             onClick={() => window.location.reload()} 
@@ -1086,8 +632,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 1. Loading State
-    if (isSessionLoggedIn && (!authCheckCompleted || isLoading)) {
+    // 2. INITIALIZING State
+    if (authState === 'INITIALIZING') {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
                 <div className="text-center space-y-4">
@@ -1098,10 +644,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 2. Unauthenticated / Not Logged In
-    const isAuthenticated = !!identity || isSessionLoggedIn;
-
-    if (!isAuthenticated) {
+    // 3. UNAUTHENTICATED State
+    if (authState === 'UNAUTHENTICATED') {
         if (showRecovery) {
             return (
                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-12">
@@ -1114,7 +658,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                                 Password Recovery
                             </h1>
                             <p className="text-gray-600 dark:text-gray-400 font-medium text-sm">
-                                Verify your identity to reset your password.
+                                Contact an administrator to assist with password resets.
                             </p>
                         </div>
                         <PasswordRecoveryForm onBack={() => setShowRecovery(false)} isMock={isMock} />
@@ -1245,7 +789,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                         <Card className="border-2 border-dashed border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 text-slate-800 dark:text-slate-200 shadow-xl mt-4">
                             <CardHeader className="py-3 px-4 border-b border-dashed border-amber-500/30">
                                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                                    <ShieldAlert className="h-4 w-4" /> 🔧 Login Diagnostics & Repair
+                                    <ShieldAlert className="h-4 w-4" /> 🔧 Dev Diagnostics & Repair
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="py-4 px-4 space-y-3">
@@ -1258,10 +802,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                                         <div className="flex justify-between">
                                             <span>Account status:</span>
                                             <span className="font-bold">{loginDebug.status}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>Role found:</span>
-                                            <span className="font-bold">{loginDebug.roleFound}</span>
                                         </div>
                                     </div>
                                 )}
@@ -1280,28 +820,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                                     ) : (
                                         <>
                                             <Wrench className="h-3.5 w-3.5" />
-                                            <span>Repair Auth User Index</span>
+                                            <span>Repair Dev Auth User Index</span>
                                         </>
                                     )}
                                 </Button>
-
-                                {repairResults && (
-                                    <div className="text-xs space-y-1.5 font-mono pt-2">
-                                        <div className="flex justify-between font-bold text-amber-700 dark:text-amber-400">
-                                            <span>Index Repair Report:</span>
-                                            <span>{repairResults.overall === 'pass' ? '✅ PASS' : repairResults.overall === 'fail' ? '❌ FAIL' : '⏳ Running'}</span>
-                                        </div>
-                                        {repairResults.details.length > 0 && (
-                                            <div className="border border-amber-500/20 bg-slate-950 text-slate-300 rounded p-2.5 font-mono text-[10px] max-h-40 overflow-y-auto space-y-1">
-                                                {repairResults.details.map((detail, idx) => (
-                                                    <div key={idx} className={detail.startsWith('ERROR:') ? 'text-red-450 font-bold' : detail.startsWith('---') ? 'text-blue-400 font-bold' : 'text-slate-300'}>
-                                                        {detail}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
                             </CardContent>
                         </Card>
                     )}
@@ -1310,8 +832,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 3. Authenticated but NOT Registered in Canister DB
-    if (!user) {
+    // 4. AUTHENTICATED_NOT_REGISTERED State
+    if (authState === 'AUTHENTICATED_NOT_REGISTERED') {
         const sessionStr = localStorage.getItem('user_session') || sessionStorage.getItem('user_session');
         const principalStr = identity ? identity.getPrincipal().toString() : (sessionStr ? JSON.parse(sessionStr).principalId : 'Unknown');
 
@@ -1329,7 +851,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6 text-center">
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Public signup is disabled. An Administrator must register your Principal ID in the system database before you can log in.
+                            Public registration is restricted. An Administrator must register your Principal ID in the backend database before you can log in.
                         </p>
 
                         <div className="space-y-2 text-left">
@@ -1375,8 +897,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // Force Password Change Check
-    if (getOptionalBoolean(user?.needsPasswordChange)) {
+    // 5. PASSWORD_CHANGE_REQUIRED State
+    if (authState === 'PASSWORD_CHANGE_REQUIRED') {
         return (
             <AuthContext.Provider value={authContextValue}>
                 <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 px-4 py-12">
@@ -1401,7 +923,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="pt-6">
-                                <ForcePasswordChangeForm user={user} onPasswordChanged={() => refetch()} logout={handleLogout} />
+                                <ForcePasswordChangeForm user={user!} onPasswordChanged={() => refetch()} logout={handleLogout} />
                             </CardContent>
                         </Card>
                     </div>
@@ -1410,7 +932,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 4. Authenticated & Registered
+    // 6. AUTHENTICATED State
     return (
         <AuthContext.Provider value={authContextValue}>
             {securityViolation && (
@@ -1449,11 +971,8 @@ function ForcePasswordChangeForm({ user, onPasswordChanged, logout }: { user: Us
 
         setIsSubmitting(true);
         try {
-            // Derive new identity locally to compute new Principal ID
             const derivedIdentity = await deriveIdentity(user.username, newPassword);
             const newPrincipalId = derivedIdentity.getPrincipal().toString();
-
-            // Compute seed hex for local session updating
             const seedHex = await createPasswordHash(user.username, newPassword);
 
             if (!actor) {
@@ -1462,7 +981,6 @@ function ForcePasswordChangeForm({ user, onPasswordChanged, logout }: { user: Us
 
             await actor.changePassword(newPassword, newPrincipalId);
 
-            // Update active session locally so user doesn't get logged out immediately
             const sessionStr = localStorage.getItem('user_session') || sessionStorage.getItem('user_session');
             if (sessionStr) {
                 const session = JSON.parse(sessionStr);

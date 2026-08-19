@@ -446,15 +446,15 @@ const Sidebar = () => {
             {/* Footer with User Info & Logout */}
             <div className={`p-4 border-t ${getHeaderBorder()} flex items-center justify-between`}>
               <Link to="/profile" className="flex items-center gap-2 max-w-[80%]" onClick={() => setMobileOpen(false)}>
-                {user.profilePhoto ? (
-                  <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover" />
+                {user?.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-[#7B0F1A]/20 text-[#D4A017] font-bold text-sm flex items-center justify-center flex-shrink-0 border border-[#D4A017]/30">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
                 <div className="truncate pr-2 text-left">
-                  <p className="text-xs font-bold truncate">{user.name}</p>
+                  <p className="text-xs font-bold truncate">{user?.name || 'User'}</p>
                   <p className={`text-[10px] uppercase font-bold tracking-wider ${isDarkSidebar || isAccentSidebar ? "text-white/60" : "text-slate-400"}`}>
                     {roleName}
                   </p>
@@ -527,15 +527,15 @@ const Sidebar = () => {
           {!isCollapsed ? (
             <>
               <Link to="/profile" className="flex items-center gap-2 max-w-[80%] text-left">
-                {user.profilePhoto ? (
-                  <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
+                {user?.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-[#7B0F1A]/20 text-[#D4A017] font-bold text-sm flex items-center justify-center flex-shrink-0 border border-[#D4A017]/30">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </div>
                 )}
                 <div className="truncate pr-2">
-                  <p className="text-xs font-bold truncate">{user.name}</p>
+                  <p className="text-xs font-bold truncate">{user?.name || 'User'}</p>
                   <p className={`text-[9px] uppercase font-bold tracking-wider leading-none mt-0.5 ${isDarkSidebar || isAccentSidebar ? "text-white/60" : "text-slate-400"}`}>
                     {roleName}
                   </p>
@@ -547,11 +547,11 @@ const Sidebar = () => {
             </>
           ) : (
             <Link to="/profile" title="View Profile">
-              {user.profilePhoto ? (
-                <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
+              {user?.profilePhoto ? (
+                <img src={user.profilePhoto} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover border border-[#D4A017]" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-[#7B0F1A]/20 text-[#D4A017] font-bold text-sm flex items-center justify-center border border-[#D4A017]/30">
-                  {user.name.charAt(0).toUpperCase()}
+                  {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </div>
               )}
             </Link>

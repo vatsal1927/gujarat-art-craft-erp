@@ -115,34 +115,36 @@ function LayoutContent() {
 
       // Helper to check settings permissions based on path and tab parameters
       const checkSettingsPermissions = () => {
+        if (!user || !user.permissions) return false;
+
         // Backup / System Config / general settings
         if (pathname.startsWith('/backup') || pathname.startsWith('/system-config') || pathname.startsWith('/settings/backup')) {
-          return !!(user.permissions && user.permissions.canBackupRestore);
+          return !!user.permissions.canBackupRestore;
         }
         // Security / Permission Matrix / User Management
         if (pathname.startsWith('/security') || pathname.startsWith('/permission-matrix') || pathname.startsWith('/user-management') || pathname.startsWith('/users') || pathname.startsWith('/permissions')) {
-          return !!(user.permissions && user.permissions.canManageStaff);
+          return !!user.permissions.canManageStaff;
         }
         // Audit Logs
         if (pathname.startsWith('/audit-logs')) {
-          return !!(user.permissions && user.permissions.canViewLogs);
+          return !!user.permissions.canViewLogs;
         }
         // Settings page check (with tab query parameter)
         if (pathname.startsWith('/settings')) {
           if (pathname.startsWith('/settings/costing')) {
-            return !!(user.permissions && user.permissions.canBackupRestore);
+            return !!user.permissions.canBackupRestore;
           }
           if (pathname.startsWith('/settings/profile')) {
-            return !!(user.permissions && user.permissions.canBackupRestore);
+            return !!user.permissions.canBackupRestore;
           }
           if (!tab || tab === 'general') {
-            return !!(user.permissions && user.permissions.canBackupRestore);
+            return !!user.permissions.canBackupRestore;
           }
           if (tab === 'branding' || tab === 'users') {
-            return !!(user.permissions && user.permissions.canManageStaff);
+            return !!user.permissions.canManageStaff;
           }
           if (tab === 'logs') {
-            return !!(user.permissions && user.permissions.canViewLogs);
+            return !!user.permissions.canViewLogs;
           }
           if (tab === 'raw-materials' || tab === 'vendors') {
             return true;

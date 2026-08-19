@@ -63,6 +63,10 @@ all-files_summary.json
 all_files_summary.json
 gujarat-art-&-craft-invoice-app/
 frontend/build_temp/
+all-files_summary.json
+all_files_summary.json
+gujarat-art-&-craft-invoice-app/
+frontend/build_temp/
 build-template/.icp/
 *.tally_backup
 frontend/env.json
@@ -71,3 +75,9 @@ frontend/src/components/ui/ui/
 frontend/src/lib/lib/
 build-template/src/frontend/env.json
 build-template/
+
+# Local Backups & Validation Artifacts
+backend_backup_*/
+frontend_backup_source/
+validation-artifacts/
+ers*

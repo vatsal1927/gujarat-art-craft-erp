@@ -10,9 +10,6 @@ import Int "mo:core/Int";
 import Float "mo:base/Float";
 import Text "mo:core/Text";
 import Principal "mo:core/Principal";
-import Migration "migration";
-
-(with migration = Migration.run)
 actor {
   type Product = (Text, Nat, Int);
   type BusinessInfo = Text;
@@ -128,8 +125,8 @@ actor {
   };
 
   public type UnitConfig = {
-    label : Text;
-    type : Text;
+    unitLabel : Text;
+    unitType : Text;
     symbol : Text;
     conversionToBase : ?Float;
   };
@@ -755,6 +752,113 @@ actor {
   var lastAuditLogId = 0;
   var lastEmployeeLedgerId = 0;
 
+  // Motoko Stable Memory Serialization Structures for Canister Upgrade Safety
+  stable var stableInvoices : [(Nat, InternalInvoice)] = [];
+  stable var stableLastInvoiceId : Nat = 0;
+  stable var stableSettings : ?Settings = null;
+  stable var stableUsers : [(Text, User)] = [];
+  stable var stableUserCount : Nat = 0;
+  stable var stableProducts : [(Text, ProductItem)] = [];
+  stable var stableCustomers : [(Text, CustomerItem)] = [];
+  stable var stablePayments : [(Nat, Payment)] = [];
+  stable var stableLastPaymentId : Nat = 0;
+  stable var stableRawMaterials : [(Text, RawMaterial)] = [];
+  stable var stablePurchases : [(Nat, Purchase)] = [];
+  stable var stableLastPurchaseId : Nat = 0;
+  stable var stableExpenses : [(Nat, Expense)] = [];
+  stable var stableLastExpenseId : Nat = 0;
+  stable var stableVendorPayments : [(Nat, VendorPayment)] = [];
+  stable var stableLastVendorPaymentId : Nat = 0;
+  stable var stableEmployees : [(Text, Employee)] = [];
+  stable var stableJobWorks : [(Nat, JobWork)] = [];
+  stable var stableLastJobWorkId : Nat = 0;
+  stable var stableCollections : [(Nat, KarigarCollection)] = [];
+  stable var stableLastCollectionId : Nat = 0;
+  stable var stableStockMovements : [(Nat, StockMovement)] = [];
+  stable var stableLastStockMovementId : Nat = 0;
+  stable var stableAuditLogs : [(Nat, AuditLog)] = [];
+  stable var stableLastAuditLogId : Nat = 0;
+  stable var stableEmployeeLedgers : [(Nat, EmployeeLedgerEntry)] = [];
+  stable var stableLastEmployeeLedgerId : Nat = 0;
+  stable var stableEmployeePayments : [(Nat, EmployeePayment)] = [];
+  stable var stableLastEmployeePaymentId : Nat = 0;
+  stable var stableConsumptionLogs : [(Nat, ConsumptionLog)] = [];
+  stable var stableLastConsumptionLogId : Nat = 0;
+  stable var stableFinishedGoodsLogs : [(Nat, FinishedGoodsLog)] = [];
+  stable var stableLastFinishedGoodsLogId : Nat = 0;
+
+  system func preupgrade() {
+    stableInvoices := invoices.entries().toArray();
+    stableLastInvoiceId := lastInvoiceId;
+    stableSettings := settings;
+    stableUsers := users.entries().toArray();
+    stableUserCount := userCount;
+    stableProducts := productsList.entries().toArray();
+    stableCustomers := customersList.entries().toArray();
+    stablePayments := paymentsList.entries().toArray();
+    stableLastPaymentId := lastPaymentId;
+    stableRawMaterials := rawMaterialsList.entries().toArray();
+    stablePurchases := purchasesList.entries().toArray();
+    stableLastPurchaseId := lastPurchaseId;
+    stableExpenses := expensesList.entries().toArray();
+    stableLastExpenseId := lastExpenseId;
+    stableVendorPayments := vendorPaymentsList.entries().toArray();
+    stableLastVendorPaymentId := lastVendorPaymentId;
+    stableEmployees := employeesList.entries().toArray();
+    stableJobWorks := jobWorksList.entries().toArray();
+    stableLastJobWorkId := lastJobWorkId;
+    stableCollections := collectionsList.entries().toArray();
+    stableLastCollectionId := lastCollectionId;
+    stableStockMovements := stockMovementsList.entries().toArray();
+    stableLastStockMovementId := lastStockMovementId;
+    stableAuditLogs := auditLogsList.entries().toArray();
+    stableLastAuditLogId := lastAuditLogId;
+    stableEmployeeLedgers := employeeLedgersList.entries().toArray();
+    stableLastEmployeeLedgerId := lastEmployeeLedgerId;
+    stableEmployeePayments := employeePaymentsList.entries().toArray();
+    stableLastEmployeePaymentId := lastEmployeePaymentId;
+    stableConsumptionLogs := consumptionLogsList.entries().toArray();
+    stableLastConsumptionLogId := lastConsumptionLogId;
+    stableFinishedGoodsLogs := finishedGoodsLogsList.entries().toArray();
+    stableLastFinishedGoodsLogId := lastFinishedGoodsLogId;
+  };
+
+  system func postupgrade() {
+    for ((k, v) in stableInvoices.vals()) { invoices.add(k, v); };
+    lastInvoiceId := stableLastInvoiceId;
+    settings := stableSettings;
+    for ((k, v) in stableUsers.vals()) { users.add(k, v); };
+    userCount := stableUserCount;
+    for ((k, v) in stableProducts.vals()) { productsList.add(k, v); };
+    for ((k, v) in stableCustomers.vals()) { customersList.add(k, v); };
+    for ((k, v) in stablePayments.vals()) { paymentsList.add(k, v); };
+    lastPaymentId := stableLastPaymentId;
+    for ((k, v) in stableRawMaterials.vals()) { rawMaterialsList.add(k, v); };
+    for ((k, v) in stablePurchases.vals()) { purchasesList.add(k, v); };
+    lastPurchaseId := stableLastPurchaseId;
+    for ((k, v) in stableExpenses.vals()) { expensesList.add(k, v); };
+    lastExpenseId := stableLastExpenseId;
+    for ((k, v) in stableVendorPayments.vals()) { vendorPaymentsList.add(k, v); };
+    lastVendorPaymentId := stableLastVendorPaymentId;
+    for ((k, v) in stableEmployees.vals()) { employeesList.add(k, v); };
+    for ((k, v) in stableJobWorks.vals()) { jobWorksList.add(k, v); };
+    lastJobWorkId := stableLastJobWorkId;
+    for ((k, v) in stableCollections.vals()) { collectionsList.add(k, v); };
+    lastCollectionId := stableLastCollectionId;
+    for ((k, v) in stableStockMovements.vals()) { stockMovementsList.add(k, v); };
+    lastStockMovementId := stableLastStockMovementId;
+    for ((k, v) in stableAuditLogs.vals()) { auditLogsList.add(k, v); };
+    lastAuditLogId := stableLastAuditLogId;
+    for ((k, v) in stableEmployeeLedgers.vals()) { employeeLedgersList.add(k, v); };
+    lastEmployeeLedgerId := stableLastEmployeeLedgerId;
+    for ((k, v) in stableEmployeePayments.vals()) { employeePaymentsList.add(k, v); };
+    lastEmployeePaymentId := stableLastEmployeePaymentId;
+    for ((k, v) in stableConsumptionLogs.vals()) { consumptionLogsList.add(k, v); };
+    lastConsumptionLogId := stableLastConsumptionLogId;
+    for ((k, v) in stableFinishedGoodsLogs.vals()) { finishedGoodsLogsList.add(k, v); };
+    lastFinishedGoodsLogId := stableLastFinishedGoodsLogId;
+  };
+
   func findUserByPrincipalInternal(principalText : Text) : ?User {
     switch (users.get(principalText)) {
       case (?u) { ?u };
@@ -1092,6 +1196,7 @@ actor {
               lastLogin = u.lastLogin;
               department = u.department;
               permissions = u.permissions;
+              linkedIdentities = u.linkedIdentities;
             };
             users.add(Principal.toText(u.principalId), updatedUser);
             createAuditLogInternal("System", "Single Master Admin Policy Enforcement", "Demoted non-admin Master Admin account: " # u.name);
@@ -1226,6 +1331,7 @@ actor {
             lastLogin = null;
             department = ?#AdminSettings;
             permissions = ?defaultPermissions("Admin");
+            linkedIdentities = null;
           };
           users.add(principalText, firstUser);
           userCount := userCount + 1;
@@ -1348,6 +1454,7 @@ actor {
       lastLogin = null;
       department = finalDept;
       permissions = finalPerms;
+      linkedIdentities = null;
     };
 
     users.add(principalText, newUser);
@@ -2360,6 +2467,8 @@ actor {
         case (?existing) { existing.openingStock };
         case (null) { ?stock };
       };
+      availableToSell = ?stock;
+      reservedStock = null;
     };
     if (not productsList.containsKey(id)) {
       productCount := productCount + 1;
@@ -2749,6 +2858,9 @@ actor {
       unitCost;
       unit;
       minStockAlert = minStock;
+      minimumStock = ?minStock;
+      preferredVendor = null;
+      reorderLevel = null;
     };
 
     if (oldStock != currentStock) {
@@ -2834,6 +2946,9 @@ actor {
             unitCost = item.rate;
             unit = item.unit;
             minStockAlert = 0.0;
+            minimumStock = null;
+            preferredVendor = null;
+            reorderLevel = null;
           };
           rawMaterialsList.add(item.materialId, newMaterial);
         };

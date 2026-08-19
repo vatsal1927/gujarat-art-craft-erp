@@ -1,6 +1,6 @@
 import { useInternetIdentity } from './useInternetIdentity';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { type backendInterface } from '../backend';
 import { createProductionIcpActor, pingCanisterBackend } from '../services/icpBackendService';
 import { MockBackend } from '../mockBackend';
@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 export function useActor(): { actor: backendInterface | null; isFetching: boolean } {
     const { identity: iiIdentity } = useInternetIdentity();
     const queryClient = useQueryClient();
+    const lastPrincipalRef = useRef<string | undefined>(undefined);
 
     // Resolve the active identity: either Internet Identity or derived password identity
     const activeIdentity = (() => {
@@ -32,18 +33,20 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
         return undefined;
     })();
 
+    const activePrincipalStr = activeIdentity?.getPrincipal().toString();
+
     const actorQuery = useQuery<backendInterface>({
-        queryKey: queryKeys.actor(activeIdentity?.getPrincipal().toString()),
+        queryKey: queryKeys.actor(activePrincipalStr),
         queryFn: async () => {
+            const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
             try {
                 const actor = await createProductionIcpActor(activeIdentity);
                 const pingResult = await pingCanisterBackend(actor);
                 
                 if (!pingResult.success) {
-                    const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
                     if (isProduction) {
                         logger.error('Actor', 'Production ICP Canister Ping Failed. Failing safely.', pingResult.error);
-                        throw new Error(pingResult.error);
+                        throw new Error(`Production Canister Unavailable: ${pingResult.error}`);
                     } else {
                         logger.warn('Actor', 'Local canister ping failed, using local storage fallback for dev unit testing');
                         return new MockBackend();
@@ -51,8 +54,7 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
                 }
 
                 return actor;
-            } catch (err) {
-                const isProduction = import.meta.env?.PROD || process.env.NODE_ENV === 'production';
+            } catch (err: any) {
                 if (isProduction) {
                     logger.error('Actor', 'Critical Production Error: Canister backend is unavailable. Failing safely.', err);
                     throw err;
@@ -67,7 +69,8 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
     });
 
     useEffect(() => {
-        if (actorQuery.data) {
+        if (actorQuery.data && activePrincipalStr !== lastPrincipalRef.current) {
+            lastPrincipalRef.current = activePrincipalStr;
             const actorKeyRoot = queryKeys.actor()[0];
             queryClient.invalidateQueries({
                 predicate: (query) => !query.queryKey.includes(actorKeyRoot)
@@ -76,10 +79,11 @@ export function useActor(): { actor: backendInterface | null; isFetching: boolea
                 predicate: (query) => !query.queryKey.includes(actorKeyRoot)
             });
         }
-    }, [actorQuery.data, queryClient]);
+    }, [actorQuery.data, activePrincipalStr, queryClient]);
 
     return {
         actor: actorQuery.data || null,
         isFetching: actorQuery.isFetching
     };
 }
+

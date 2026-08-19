@@ -229,8 +229,8 @@ const Collections = () => {
     }
   };
 
-  const linkedEmployeeId = isStaff ? (localStorage.getItem(`staff_employee_link_${user.username.toLowerCase()}`) || 'EMP-1') : '';
-  const staffEmployeeName = isStaff ? (localStorage.getItem(`staff_employee_name_${user.username.toLowerCase()}`) || 'Ramesh Patel') : user.name;
+  const linkedEmployeeId = (isStaff && user?.username) ? (localStorage.getItem(`staff_employee_link_${user.username.toLowerCase()}`) || 'EMP-1') : '';
+  const staffEmployeeName = (isStaff && user?.username) ? (localStorage.getItem(`staff_employee_name_${user.username.toLowerCase()}`) || 'Ramesh Patel') : (user?.name || '');
 
   // Filter collections and jobs
   const userCollections = isStaff

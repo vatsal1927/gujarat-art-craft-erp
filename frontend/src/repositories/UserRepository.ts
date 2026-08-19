@@ -22,36 +22,14 @@ export class UserRepository {
   static async getUsers(actor: backendInterface): Promise<User[]> {
     return executeRepository('User', 'getUsers', actor, async () => {
       const users = await actor.getUsers();
-      const cleanUsers = mapCandidUsers(users);
-      try {
-        const serialized = cleanUsers.map(u => ({
-          ...u,
-          principalId: u.principalId ? u.principalId.toString() : '',
-          createdAt: u.createdAt ? u.createdAt.toString() : ''
-        }));
-        localStorage.setItem('mock_users', JSON.stringify(serialized));
-      } catch (err) {
-        logger.warn('User', 'Failed to cache canister users in mock_users', err);
-      }
-      return cleanUsers;
+      return mapCandidUsers(users);
     }, { fallbackValue: [] });
   }
 
   static async getUsersResult(actor: backendInterface): Promise<ApiResult<User[]>> {
     return executeRepositoryResult('User', 'getUsers', actor, async () => {
       const users = await actor.getUsers();
-      const cleanUsers = mapCandidUsers(users);
-      try {
-        const serialized = cleanUsers.map(u => ({
-          ...u,
-          principalId: u.principalId ? u.principalId.toString() : '',
-          createdAt: u.createdAt ? u.createdAt.toString() : ''
-        }));
-        localStorage.setItem('mock_users', JSON.stringify(serialized));
-      } catch (err) {
-        logger.warn('User', 'Failed to cache canister users in mock_users', err);
-      }
-      return cleanUsers;
+      return mapCandidUsers(users);
     }, { fallbackValue: [] });
   }
 

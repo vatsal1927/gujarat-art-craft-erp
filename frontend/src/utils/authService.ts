@@ -15,6 +15,12 @@ export function verifyIdentityLocal(
   email: string,
   mobile: string
 ): VerificationResult {
+  if (!import.meta.env?.DEV) {
+    return {
+      success: false,
+      message: "Local identity verification is disabled in production."
+    };
+  }
   const stored = localStorage.getItem('mock_users');
   const users = stored ? JSON.parse(stored) : [];
   
